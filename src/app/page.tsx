@@ -10,6 +10,27 @@ const formFields = [
   { id: "teamSize", label: "TEAM SIZE",  type: "text"  },
 ];
 
+function MetricArrow() {
+  return (
+    <svg
+      viewBox="0 0 76 12"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="h-3 w-12 shrink-0 sm:w-14 lg:w-[72px]"
+      aria-hidden="true"
+    >
+      <path
+        d="M1 6H70M64 1.5L70 6L64 10.5"
+        stroke="#7dc890"
+        strokeOpacity="0.8"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function RoundDot({ className = "" }: { className?: string }) {
   return (
     <>
@@ -42,17 +63,43 @@ export default function BragiWaitlist() {
     name: "", email: "", company: "", teamSize: "",
   });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   const set = (id: string, val: string) =>
     setValues((p) => ({ ...p, [id]: val }));
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setError("");
+    setSubmitting(true);
+
+    try {
+      const response = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        throw new Error(data.error || "Unable to join the waitlist.");
+      }
+
+      setSubmitted(true);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to join the waitlist. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <main className="relative min-h-screen bg-black text-white">
+    <main className="relative min-h-screen overflow-hidden bg-black text-white">
 
       {/* ── Background image — covers full page ── */}
       <Image
@@ -61,11 +108,11 @@ export default function BragiWaitlist() {
         fill
         priority
         sizes="100vw"
-        className="pointer-events-none object-cover object-center"
+        className="pointer-events-none object-cover object-[62%_center] lg:object-right"
       />
 
       {/* ── Left-side black fade ── */}
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,#000_0%,#000_26%,rgba(0,0,0,0.90)_46%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.04)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,#000_0%,#000_30%,rgba(0,0,0,0.92)_49%,rgba(0,0,0,0.34)_68%,rgba(0,0,0,0.02)_100%)] lg:bg-[linear-gradient(90deg,#000_0%,#000_38%,rgba(0,0,0,0.92)_57%,rgba(0,0,0,0.28)_76%,rgba(0,0,0,0)_100%)]" />
       {/* ── Top-to-bottom darkening ── */}
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.30)_0%,rgba(0,0,0,0.50)_55%,rgba(0,0,0,0.68)_100%)]" />
 
@@ -78,15 +125,15 @@ export default function BragiWaitlist() {
         </header>
 
         {/* ══ HERO ══ */}
-        <section className="flex flex-1 flex-col items-center justify-center px-4 py-16 text-center sm:py-20 lg:py-40">
+        <section className="flex flex-1 flex-col items-center justify-center px-4 py-10 text-center sm:py-14 md:py-16 lg:py-40">
 
           {/* Eyebrow */}
-          <p className="mb-4 text-[10px] font-normal tracking-[0.58em] text-[#5F9965]/85 sm:mb-5 sm:text-[22px]">
+          <p className="mb-4 text-[10px] font-normal tracking-[0.48em] text-[#5F9965]/85 sm:mb-5 sm:text-sm md:text-base lg:text-[22px]">
             EARLY ACCESS
           </p>
 
           {/* Headline */}
-          <h1 className="max-w-5xl text-[clamp(2rem,5.2vw,4.4rem)] font-medium leading-[1.04] tracking-[-0.03em] text-white">
+          <h1 className="max-w-full text-[clamp(1.45rem,6.2vw,4.4rem)] font-medium leading-[1.04] tracking-[-0.03em] text-white sm:max-w-5xl">
             <span className="block whitespace-nowrap">
               Your pipeline
               <RoundDot className="ml-[0.035em] mr-[0.18em]" />
@@ -100,7 +147,7 @@ export default function BragiWaitlist() {
           </h1>
 
           {/* Sub-copy */}
-          <p className="mx-auto mt-6 max-w-[800px] text-sm leading-[1.82] text-white/58 sm:mt-7 sm:text-[22px]">
+          <p className="mx-auto mt-5 max-w-[800px] text-xs leading-[1.75] text-white/58 sm:mt-6 sm:text-sm md:text-base lg:mt-7 lg:text-[22px]">
             Built for founders who are done running their business from{" "}
             <strong className="font-normal text-white/85">
               5 different tools and a prayer.
@@ -109,7 +156,7 @@ export default function BragiWaitlist() {
           </p>
 
           {/* ── Form card ── */}
-          <div className="mx-auto mt-10 w-full max-w-[660px] rounded-[28px] border-4 border-[#1f2b21] bg-black/58 px-11 py-10 backdrop-blur-sm sm:mt-12 sm:px-12 sm:py-11">
+          <div className="mx-auto mt-7 w-full max-w-[360px] rounded-[18px] border-2 border-[#1f2b21] bg-black/58 px-4 py-5 backdrop-blur-sm sm:mt-10 sm:max-w-[660px] sm:rounded-[28px] sm:border-4 sm:px-8 sm:py-8 md:px-10 md:py-10 lg:mt-12 lg:px-12 lg:py-11">
             {submitted ? (
               <div className="py-10 text-center">
                 <p className="text-xl font-bold text-[#5F9965]">You&apos;re on the list!</p>
@@ -121,12 +168,12 @@ export default function BragiWaitlist() {
               <form onSubmit={handleSubmit} noValidate>
 
                 {/* 2 × 2 grid */}
-                <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:gap-x-7 sm:gap-y-7">
+                <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:gap-x-5 sm:gap-y-6 md:gap-x-7 md:gap-y-7">
                   {formFields.map(({ id, label, type }) => (
-                    <div key={id} className="flex flex-col gap-3">
+                    <div key={id} className="flex flex-col gap-1.5 sm:gap-3">
                       <label
                         htmlFor={id}
-                        className="text-center text-[15px] font-semibold tracking-[0.02em] text-white/58"
+                        className="text-center text-[8px] font-semibold tracking-[0.08em] text-white/58 sm:text-xs md:text-[15px] md:tracking-[0.02em]"
                       >
                         {label}
                       </label>
@@ -135,8 +182,9 @@ export default function BragiWaitlist() {
                         type={type}
                         value={values[id as keyof typeof values]}
                         onChange={(e) => set(id, e.target.value)}
-                        className="h-[56px] w-full rounded-[14px] border border-[#253327] bg-black/35 px-4 text-base text-white outline-none transition-colors duration-150 focus:border-[#4eb87b]/45 focus:bg-white/5"
+                        className="h-9 w-full rounded-[8px] border border-[#253327] bg-black/35 px-3 text-sm text-white outline-none transition-colors duration-150 focus:border-[#4eb87b]/45 focus:bg-white/5 sm:h-12 sm:rounded-[10px] sm:px-4 md:h-[56px] md:rounded-[14px] md:text-base"
                         autoComplete="off"
+                        required={id === "name" || id === "email"}
                       />
                     </div>
                   ))}
@@ -145,61 +193,64 @@ export default function BragiWaitlist() {
                 {/* CTA button */}
                 <button
                   type="submit"
-                  className="mt-8 h-[60px] w-full rounded-[14px] bg-[#2c5d47] text-[21px] font-semibold tracking-[0.01em] text-white transition-colors hover:bg-[#366f55] active:scale-[0.985]"
+                  disabled={submitting}
+                  className="mt-5 h-10 w-full rounded-[8px] bg-[#2c5d47] text-xs font-semibold tracking-[0.01em] text-white transition-colors hover:bg-[#366f55] active:scale-[0.985] sm:h-14 sm:rounded-[10px] sm:text-base md:mt-8 md:h-[60px] md:rounded-[14px] md:text-[21px]"
                 >
-                  Join the waitlist →
+                  {submitting ? "Joining..." : "Join the waitlist →"}
                 </button>
 
                 {/* Disclaimer */}
-                <p className="mt-6 text-center text-[15px] font-medium text-white/32">
-                  No spam. No pitch decks. Just early access when we launch.
-                </p>
+                {error ? (
+                  <p className="mt-3 text-center text-[8px] font-medium text-red-300/80 sm:text-xs md:mt-6 md:text-[15px]">
+                    {error}
+                  </p>
+                ) : (
+                  <p className="mt-3 text-center text-[8px] font-medium text-white/32 sm:text-xs md:mt-6 md:text-[15px]">
+                    No spam. No pitch decks. Just early access when we launch.
+                  </p>
+                )}
               </form>
             )}
           </div>
         </section>
 
         {/* ══ METRICS STRIP ══ */}
-        <div className="px-4 pb-12 pt-4 sm:px-9 lg:px-14">
-          <div className="mx-auto flex max-w-[1080px] items-center justify-center">
+        <div className="px-4 pb-8 pt-2 sm:px-9 md:pb-10 lg:px-14 lg:pb-12 lg:pt-4">
+          <div className="mx-auto flex max-w-[1080px] flex-col items-center justify-center gap-5 md:flex-row md:gap-0">
 
             {/* Lead → Deal */}
-            <div className="flex min-w-[230px] flex-col items-center gap-2">
-              <div className="flex items-center gap-3">
-                <span className="text-[34px] font-semibold leading-none text-white">Lead</span>
-                <span className="relative flex h-px w-[72px] items-center bg-[#7dc890]/80">
-                  <span className="absolute right-0 top-1/2 h-[8px] w-[8px] -translate-y-1/2 rotate-45 border-r-2 border-t-2 border-[#7dc890]/80" />
-                </span>
-                <span className="text-[34px] font-semibold leading-none text-white">Deal</span>
+            <div className="flex min-w-[190px] flex-col items-center gap-1.5 lg:min-w-[230px] lg:gap-2">
+              <div className="flex items-center gap-2.5 lg:gap-3">
+                <span className="text-[24px] font-semibold leading-none text-white sm:text-[28px] lg:text-[34px]">Lead</span>
+                <MetricArrow />
+                <span className="text-[24px] font-semibold leading-none text-white sm:text-[28px] lg:text-[34px]">Deal</span>
               </div>
-              <span className="text-[11px] tracking-[0.02em] text-white/24">Sales workspace</span>
+              <span className="text-[10px] tracking-[0.02em] text-white/24 lg:text-[11px]">Sales workspace</span>
             </div>
 
             {/* Divider */}
-            <span className="mx-10 h-[86px] w-px bg-white/20" />
+            <span className="hidden h-[58px] w-px bg-white/20 md:block md:mx-5 lg:mx-10 lg:h-[86px]" />
 
             {/* Project → Completed */}
-            <div className="flex min-w-[360px] flex-col items-center gap-2">
-              <div className="flex items-center gap-3">
-                <span className="text-[34px] font-semibold leading-none text-white">Project</span>
-                <span className="relative flex h-px w-[72px] items-center bg-[#7dc890]/80">
-                  <span className="absolute right-0 top-1/2 h-[8px] w-[8px] -translate-y-1/2 rotate-45 border-r-2 border-t-2 border-[#7dc890]/80" />
-                </span>
-                <span className="text-[34px] font-semibold leading-none text-white">Completed</span>
+            <div className="flex min-w-[280px] flex-col items-center gap-1.5 lg:min-w-[360px] lg:gap-2">
+              <div className="flex items-center gap-2.5 lg:gap-3">
+                <span className="text-[24px] font-semibold leading-none text-white sm:text-[28px] lg:text-[34px]">Project</span>
+                <MetricArrow />
+                <span className="text-[24px] font-semibold leading-none text-white sm:text-[28px] lg:text-[34px]">Completed</span>
               </div>
-              <span className="text-[11px] tracking-[0.02em] text-white/24">Delivery workspace</span>
+              <span className="text-[10px] tracking-[0.02em] text-white/24 lg:text-[11px]">Delivery workspace</span>
             </div>
 
             {/* Divider */}
-            <span className="mx-10 h-[86px] w-px bg-white/20" />
+            <span className="hidden h-[58px] w-px bg-white/20 md:block md:mx-5 lg:mx-10 lg:h-[86px]" />
 
             {/* 1 tool */}
-            <div className="flex min-w-[130px] flex-col items-center gap-2">
-              <div className="flex items-end gap-2">
-                <span className="text-[50px] font-semibold leading-[0.78] text-[#7dc890]">1</span>
-                <span className="text-[34px] font-semibold leading-none text-white">tool</span>
+            <div className="flex min-w-[110px] flex-col items-center gap-1.5 lg:min-w-[130px] lg:gap-2">
+              <div className="flex items-end gap-1.5 lg:gap-2">
+                <span className="text-[36px] font-semibold leading-[0.78] text-[#7dc890] sm:text-[42px] lg:text-[50px]">1</span>
+                <span className="text-[24px] font-semibold leading-none text-white sm:text-[28px] lg:text-[34px]">tool</span>
               </div>
-              <span className="text-[11px] tracking-[0.02em] text-white/24">Not &quot;X&quot; No&apos;s</span>
+              <span className="text-[10px] tracking-[0.02em] text-white/24 lg:text-[11px]">Not &quot;X&quot; No&apos;s</span>
             </div>
 
           </div>
@@ -207,7 +258,7 @@ export default function BragiWaitlist() {
 
         {/* ══ FOOTER BAR ══ */}
         <footer className="border-t border-[#2a6634] bg-black px-5 sm:px-9 lg:px-14">
-          <div className="flex h-[72px] items-center justify-between sm:h-[100px]">
+          <div className="flex min-h-[72px] flex-col items-center justify-center gap-2 py-4 text-center sm:h-[84px] sm:flex-row sm:justify-between sm:gap-0 sm:py-0 lg:h-[100px]">
             <span className="text-[11px] font-medium text-white/28 sm:text-[13px] lg:text-[22px]">
               © 2026 Bragi | Built by Geekonomy
             </span>
