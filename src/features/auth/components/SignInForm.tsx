@@ -2,6 +2,7 @@
 
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useState } from "react";
+import { sendOtp, verifyOtp } from "../api";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as yup from "yup";
@@ -40,25 +41,41 @@ function PasswordMode() {
 
 function OtpMode() {
   const [sent, setSent] = useState(false);
+  const [email, setEmail] = useState("");
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<OtpRequestValues>({ resolver: yupResolver(otpRequestSchema) });
   const { register: registerVerify, handleSubmit: handleSubmitVerify, formState: { errors: errorsVerify, isSubmitting: isSubmittingVerify } } = useForm<OtpVerifyValues>({ resolver: yupResolver(otpVerifySchema) });
 
   if (sent) {
     return (
-      <form className="grid gap-5" onSubmit={handleSubmitVerify(async () => {
-        toast.success("Verified! Signed in for this frontend preview.");
+      <form className="grid gap-5" onSubmit={handleSubmitVerify(async (values) => {
+        try {
+          const data = await verifyOtp(email, values.code);
+          localStorage.setItem("accessToken", data.accessToken);
+          toast.success("Verified! Signed in successfully.");
+          // TODO: Redirect or dispatch user data to Redux
+          window.location.href = "/dashboard"; // Adjust the URL based on app flow
+        } catch (err: any) {
+          toast.error(err.message || "Failed to verify OTP.");
+        }
       })}>
-        <Alert tone="success">A mock code was sent. Check your email.</Alert>
+        <Alert tone="success">A code was sent. Check your email.</Alert>
         <Input id="otp-code" label="Confirmation code" type="text" error={errorsVerify.code?.message} {...registerVerify("code")} />
         <Button disabled={isSubmittingVerify}>{isSubmittingVerify ? "Verifying..." : "Verify"}</Button>
+        <Button variant="ghost" type="button" onClick={() => setSent(false)}>Change Email</Button>
       </form>
     );
   }
 
   return (
-    <form className="grid gap-5" onSubmit={handleSubmit(async () => {
-      setSent(true);
-      toast.success("Mock OTP sent.");
+    <form className="grid gap-5" onSubmit={handleSubmit(async (values) => {
+      try {
+        await sendOtp(values.email);
+        setEmail(values.email);
+        setSent(true);
+        toast.success("OTP sent to your email.");
+      } catch (err: any) {
+        toast.error(err.message || "Failed to send OTP.");
+      }
     })}>
       <Input id="otp-email" label="Work email" type="email" error={errors.email?.message} {...register("email")} />
       <Button disabled={isSubmitting}>{isSubmitting ? "Sending..." : "Send OTP"}</Button>
