@@ -3,6 +3,11 @@
 :root {
   --background: #000000;
   --foreground: #ffffff;
+  --bragi-surface: #0b100c;
+  --bragi-surface-muted: #111a13;
+  --bragi-line: #203226;
+  --bragi-green: #5f9965;
+  --bragi-green-bright: #7dc890;
 }
 
 @theme inline {
@@ -12,8 +17,24 @@
   --font-mono: var(--font-geist-mono);
 }
 
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-padding-top: 5rem;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-poppins-sans), sans-serif;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  letter-spacing: 0;
 }

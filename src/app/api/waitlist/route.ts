@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 type WaitlistPayload = {
   name?: string;
   email?: string;
@@ -27,6 +25,7 @@ export async function POST(request: Request) {
     );
   }
 
+  const resend = new Resend(process.env.RESEND_API_KEY);
   const payload = (await request.json()) as WaitlistPayload;
   const name = payload.name?.trim();
   const email = payload.email?.trim();
@@ -111,3 +110,4 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true });
 }
+
