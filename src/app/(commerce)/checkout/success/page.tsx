@@ -17,9 +17,12 @@ export default function CheckoutSuccessPage() {
         <div className="mt-8"><StepIndicator steps={["Paid", "Provisioning", "Password", "Onboarding"]} active={1} /></div>
       </section>
       <section className="grid gap-6">
-        <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
-          <div className="flex items-center gap-3"><Spinner /><p className="font-semibold text-white">Setting up your workspace...</p></div>
-          <p className="mt-4 text-sm leading-6 text-white/58">Provisioning polling will connect to GET /v1/checkout/status/:id when the checkout API is ready.</p>
+        <div className="rounded-lg border border-[#7dc890]/25 bg-[#7dc890]/10 p-6">
+          <h2 className="text-2xl font-semibold text-white">Payment completed</h2>
+          <p className="mt-3 text-sm leading-6 text-white/62">Your workspace has been provisioned and you're ready to go.</p>
+          <div className="mt-6">
+            <Link className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#5f9965] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#6bad72]" href={ROUTES.dashboard}>Go to Dashboard</Link>
+          </div>
         </div>
         <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
           <h2 className="text-2xl font-semibold text-white">Create your password</h2>

@@ -6,6 +6,7 @@ import { products, type ProductKey } from "@/config/products";
 import { ROUTES } from "@/config/routes";
 import { MarketingLayout } from "@/shared/layouts/MarketingLayout";
 import { CTAButton } from "@/shared/components/marketing/CTAButton";
+import { CheckoutCTAButton } from "@/shared/components/marketing/CheckoutCTAButton";
 import { SectionHeading } from "@/shared/components/marketing/SectionHeading";
 import { Card } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
@@ -119,7 +120,7 @@ export default function ProductPage({ productKey }: { productKey: ProductKey }) 
               <p className="mt-5 max-w-2xl text-lg leading-8 text-white/62">{product.description}</p>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-white/44">{detail.proof}</p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <CTAButton href={ROUTES.checkout(product.checkoutPlan)}>Buy now</CTAButton>
+                <CheckoutCTAButton checkoutPlan={product.checkoutPlan} />
                 <CTAButton href={ROUTES.pricing} variant="secondary">Compare plans</CTAButton>
               </div>
             </div>
@@ -167,7 +168,7 @@ export default function ProductPage({ productKey }: { productKey: ProductKey }) 
               title={`Ready to try ${product.title}?`}
               action={
                 <div className="flex flex-wrap justify-center gap-3">
-                  <CTAButton href={ROUTES.checkout(product.checkoutPlan)}>Buy now</CTAButton>
+                  <CheckoutCTAButton checkoutPlan={product.checkoutPlan} />
                   <Link className="inline-flex min-h-11 items-center justify-center rounded-md border border-white/15 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/8" href="/#waitlist">Join waitlist</Link>
                 </div>
               }

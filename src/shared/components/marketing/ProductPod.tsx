@@ -1,9 +1,14 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
 import { Card } from "@/shared/components/ui/Card";
+import { useAppSelector } from "@/store/hooks";
 import { ROUTES } from "@/config/routes";
 
 export function ProductPod({ product }: { product: { title: string; description: string; href: string; checkoutPlan: string; image: string } }) {
+  const activePlan = useAppSelector((state) => state.session.activePlan);
+  const isCurrentPlan = activePlan === product.checkoutPlan;
   return (
     <Card className="grid gap-5 overflow-hidden p-5">
       <div className="relative aspect-[16/10] rounded-md border border-white/10 bg-[#0f1711]">
@@ -15,7 +20,11 @@ export function ProductPod({ product }: { product: { title: string; description:
       </div>
       <div className="flex flex-wrap gap-3">
         <Link className="text-sm font-semibold text-[#a8dfb3] hover:text-white" href={product.href}>Learn more</Link>
-        <Link className="text-sm font-semibold text-white/84 hover:text-white" href={ROUTES.checkout(product.checkoutPlan)}>Buy now</Link>
+        {isCurrentPlan ? (
+          <span className="text-sm font-semibold text-white/40 cursor-default">Current plan</span>
+        ) : (
+          <Link className="text-sm font-semibold text-white/84 hover:text-white" href={ROUTES.checkout(product.checkoutPlan)}>Buy now</Link>
+        )}
       </div>
     </Card>
   );

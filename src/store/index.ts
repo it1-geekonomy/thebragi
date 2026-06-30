@@ -4,6 +4,7 @@ type SessionState = {
   isAuthenticated: boolean;
   userName: string | null;
   scope: "anonymous" | "checkout" | "full";
+  activePlan: string | null;
 };
 
 type CheckoutState = {
@@ -19,6 +20,7 @@ const initialSessionState: SessionState = {
   isAuthenticated: false,
   userName: null,
   scope: "anonymous",
+  activePlan: null,
 };
 
 const initialCheckoutState: CheckoutState = {

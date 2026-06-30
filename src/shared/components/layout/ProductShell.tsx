@@ -1,15 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { productNav } from "@/config/nav";
 import { ROUTES } from "@/config/routes";
+import { useAppSelector } from "@/store/hooks";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { Badge } from "@/shared/components/ui/Badge";
 import { cn } from "@/shared/lib/cn";
 
 export function ProductShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const scope = useAppSelector((state) => state.session.scope);
+
+  useEffect(() => {
+    if (scope !== "full") {
+      router.replace(ROUTES.pricing);
+    }
+  }, [scope, router]);
 
   return (
     <div className="min-h-screen bg-[#070907] text-white lg:grid lg:grid-cols-[270px_1fr]">
@@ -18,15 +28,28 @@ export function ProductShell({ children }: { children: React.ReactNode }) {
           <Link href={ROUTES.home} aria-label="Bragi home"><BragiLogo /></Link>
           <Badge className="lg:mt-8">App preview</Badge>
         </div>
-        <nav className="mt-6 grid gap-2 text-sm text-white/62 lg:mt-8">
+        <nav className="mt-6 grid gap-1 text-sm font-medium text-white/62 lg:mt-8">
           {productNav.map((item) => {
             const active = pathname === item.href || (item.href !== ROUTES.dashboard && pathname.startsWith(item.href));
-            return <Link key={item.href} className={cn("rounded-md px-3 py-3 hover:bg-white/8 hover:text-white", active && "bg-[#7dc890]/12 text-white")} href={item.href}>{item.label}</Link>;
+            return (
+              <Link
+                key={item.href}
+                className={cn(
+                  "group relative flex items-center gap-3 rounded-lg px-3 py-3 transition-all duration-200",
+                  active
+                    ? "bg-[#7dc890]/12 text-white"
+                    : "hover:bg-white/[0.06] hover:text-white"
+                )}
+                href={item.href}
+              >
+                {active ? (
+                  <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-[#7dc890]" />
+                ) : null}
+                <span className="transition-all duration-200 group-hover:translate-x-0.5">{item.label}</span>
+              </Link>
+            );
           })}
         </nav>
-        <div className="mt-8 hidden rounded-lg border border-white/10 bg-white/[0.035] p-4 text-xs leading-5 text-white/44 lg:block">
-          Plan gates are shown as frontend state for now. Backend session and module access can plug into this shell later.
-        </div>
       </aside>
       <div className="min-w-0">
         <header className="flex min-h-16 items-center justify-between border-b border-white/10 bg-black/40 px-5 py-4 sm:px-8">

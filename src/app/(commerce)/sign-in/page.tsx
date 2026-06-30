@@ -14,9 +14,9 @@ export default function SignInPage() {
       <section>
         <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[#7dc890]">Bragi ID</p>
         <h1 className="mt-5 text-4xl font-semibold leading-tight text-white sm:text-5xl">Sign in and get back to the work in motion.</h1>
-        <p className="mt-5 text-base leading-8 text-white/58">Password and OTP modes are prepared on the frontend. Backend auth can plug into these forms without changing the route.</p>
+        <p className="mt-5 text-base leading-8 text-white/58">Sign in to access your workspace and projects.</p>
       </section>
-      <section className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
+      <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6">
         <h2 className="text-2xl font-semibold text-white">Sign in to Bragi</h2>
         <p className="mt-2 text-sm text-white/58">Use your Bragi account to open the app.</p>
         <div className="mt-6"><SignInForm /></div>

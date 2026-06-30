@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as yup from "yup";
-import { setCheckoutStep } from "@/store";
+import { setCheckoutStep, setMockSession } from "@/store";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
@@ -14,6 +16,7 @@ import { StepIndicator } from "@/shared/components/ui/StepIndicator";
 import { Alert } from "@/shared/components/ui/Alert";
 import { Tabs } from "@/shared/components/ui/Tabs";
 import { planCatalog } from "@/config/plans";
+import { ROUTES } from "@/config/routes";
 import { formatCurrency } from "@/shared/lib/format-currency";
 
 const accountSchema = yup.object({
@@ -101,6 +104,7 @@ function OtpStep() {
 
 function PaymentStep({ planSlug }: { planSlug?: string }) {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const plan = planCatalog.find((item) => item.slug === planSlug) ?? planCatalog[2];
 
   return (
@@ -117,28 +121,25 @@ function PaymentStep({ planSlug }: { planSlug?: string }) {
       </div>
       <Button onClick={() => {
         toast.success("Mock payment completed.");
-        dispatch(setCheckoutStep("success"));
+        dispatch(setMockSession({ isAuthenticated: true, scope: "full", activePlan: plan.slug }));
+        router.push("/checkout/success");
       }}>Pay {formatCurrency(plan.priceMonthly)}</Button>
-    </div>
-  );
-}
-
-function SuccessStep() {
-  return (
-    <div className="mt-8 grid gap-5">
-      <Alert tone="success">Checkout preview complete. The production flow will redirect to the success/provisioning page.</Alert>
-      <div className="rounded-lg border border-[#7dc890]/25 bg-[#7dc890]/10 p-6">
-        <h3 className="text-xl font-semibold text-white">Workspace queued for setup</h3>
-        <p className="mt-3 text-sm leading-6 text-white/62">Next, backend provisioning will create the workspace, then send the user into onboarding.</p>
-      </div>
     </div>
   );
 }
 
 export function CheckoutStepper({ planSlug }: { planSlug?: string }) {
   const step = useAppSelector((state) => state.checkout.step);
+  const isAuthenticated = useAppSelector((state) => state.session.isAuthenticated);
+  const dispatch = useAppDispatch();
   const activeStep = step === "account" ? 0 : step === "verify" ? 1 : 2;
   const [mode, setMode] = useState<"new" | "signin">("new");
+
+  useEffect(() => {
+    if (isAuthenticated && (step === "account" || step === "verify")) {
+      dispatch(setCheckoutStep("payment"));
+    }
+  }, [isAuthenticated, step, dispatch]);
 
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
@@ -156,7 +157,6 @@ export function CheckoutStepper({ planSlug }: { planSlug?: string }) {
       ) : null}
       {step === "verify" ? <OtpStep /> : null}
       {step === "payment" ? <PaymentStep planSlug={planSlug} /> : null}
-      {step === "success" ? <SuccessStep /> : null}
       <p className="mt-6 text-xs text-white/34">Mode: {mode === "new" ? "new checkout account" : "returning account"}</p>
     </div>
   );

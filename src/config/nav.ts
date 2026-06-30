@@ -46,7 +46,4 @@ export const footerColumns = [
 
 export const productNav = [
   { label: "Dashboard", href: ROUTES.dashboard, module: null },
-  { label: "Sales", href: "/app/sales", module: "sales" },
-  { label: "Projects", href: "/app/projects", module: "projects" },
-  { label: "Settings", href: "/app/settings", module: null },
 ];
