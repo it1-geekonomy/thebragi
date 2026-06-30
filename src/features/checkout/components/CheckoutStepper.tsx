@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as yup from "yup";
-import { setCheckoutStep, setMockSession } from "@/store";
+import { setCheckoutStep, setCheckoutData, setMockSession } from "@/store";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
@@ -18,6 +18,8 @@ import { Tabs } from "@/shared/components/ui/Tabs";
 import { planCatalog } from "@/config/plans";
 import { ROUTES } from "@/config/routes";
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { usePlans } from "@/features/pricing/hooks/usePlans";
+import Script from "next/script";
 
 const accountSchema = yup.object({
   email: yup.string().email("Enter a valid email.").required("Work email is required."),
@@ -39,14 +41,37 @@ type AccountValues = yup.InferType<typeof accountSchema>;
 type SignInValues = yup.InferType<typeof signInSchema>;
 type OtpValues = yup.InferType<typeof otpSchema>;
 
-function AccountStep() {
+function AccountStep({ planId }: { planId?: string }) {
   const dispatch = useAppDispatch();
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<AccountValues>({ resolver: yupResolver(accountSchema) });
 
   return (
-    <form className="mt-8 grid gap-5" onSubmit={handleSubmit(async () => {
-      toast.success("Account details saved for this frontend preview.");
-      dispatch(setCheckoutStep("verify"));
+    <form className="mt-8 grid gap-5" onSubmit={handleSubmit(async (values) => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/organizations/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            superAdminName: values.name,
+            superAdminEmail: values.email,
+            name: values.company,
+            teamSize: values.teamSize,
+            planId: planId,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.message || "Registration failed");
+        }
+        const data = await res.json();
+        dispatch(setCheckoutData({
+          organizationId: data.organization.id,
+          userEmail: values.email,
+        }));
+        dispatch(setCheckoutStep("verify"));
+      } catch (err: any) {
+        toast.error(err.message);
+      }
     })}>
       <Input id="email" label="Work email" type="email" error={errors.email?.message} {...register("email")} />
       <Input id="name" label="Full name" error={errors.name?.message} {...register("name")} />
@@ -85,18 +110,45 @@ function SignInStep() {
 
 function OtpStep() {
   const dispatch = useAppDispatch();
+  const userEmail = useAppSelector((state) => state.checkout.userEmail);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<OtpValues>({ resolver: yupResolver(otpSchema) });
 
+  useEffect(() => {
+    if (userEmail) {
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail }),
+      }).catch(console.error);
+    }
+  }, [userEmail]);
+
   return (
-    <form className="mt-8 grid gap-5" onSubmit={handleSubmit(async () => {
-      toast.success("Email verified for this frontend preview.");
-      dispatch(setCheckoutStep("payment"));
+    <form className="mt-8 grid gap-5" onSubmit={handleSubmit(async (values) => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/otp/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: userEmail, otp: values.code }),
+        });
+        if (!res.ok) throw new Error("Invalid code");
+        toast.success("Email verified!");
+        dispatch(setCheckoutStep("payment"));
+      } catch (err: any) {
+        toast.error(err.message);
+      }
     })}>
-      <Alert tone="info">Use any 6 digit code to continue. Backend OTP verification will replace this mock action.</Alert>
+      <Alert tone="info">Check your email for the verification code.</Alert>
       <Input id="code" label="Verification code" inputMode="numeric" maxLength={6} error={errors.code?.message} {...register("code")} />
       <div className="flex flex-wrap gap-3">
         <Button disabled={isSubmitting}>{isSubmitting ? "Verifying..." : "Verify code"}</Button>
-        <Button type="button" variant="secondary" onClick={() => toast.info("A new mock code would be sent.")}>Resend code</Button>
+        <Button type="button" variant="secondary" onClick={() => {
+           fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/otp/send`, {
+             method: "POST",
+             headers: { "Content-Type": "application/json" },
+             body: JSON.stringify({ email: userEmail }),
+           }).then(() => toast.success("Code resent!"));
+        }}>Resend code</Button>
       </div>
     </form>
   );
@@ -105,11 +157,64 @@ function OtpStep() {
 function PaymentStep({ planSlug }: { planSlug?: string }) {
   const dispatch = useAppDispatch();
   const router = useRouter();
-  const plan = planCatalog.find((item) => item.slug === planSlug) ?? planCatalog[2];
+  const { organizationId, userEmail } = useAppSelector((state) => state.checkout);
+  const { plans } = usePlans();
+  const plan = plans.find((item) => item.slug === planSlug) ?? plans[2];
+  const planId = plan?.id;
+  const [isPaying, setIsPaying] = useState(false);
+
+  const handlePayment = async () => {
+    setIsPaying(true);
+    try {
+      const orderRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/razorpay/create-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId, planId }),
+      });
+      if (!orderRes.ok) throw new Error("Failed to create order");
+      const order = await orderRes.json();
+      
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: order.amount,
+        currency: "INR",
+        order_id: order.id,
+        name: "Bragi",
+        description: `${plan.name} Subscription`,
+        handler: async (response: any) => {
+          const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/razorpay/verify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...response,
+              organizationId,
+              planId,
+            }),
+          });
+          if (!verifyRes.ok) throw new Error("Payment verification failed");
+          
+          dispatch(setMockSession({ isAuthenticated: true, scope: "full", activePlan: plan.slug }));
+          router.push("/checkout/success");
+        },
+        prefill: {
+          email: userEmail,
+        },
+        theme: { color: "#7dc890" },
+      };
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', function () {
+        setIsPaying(false);
+      });
+      rzp.open();
+    } catch (err: any) {
+      toast.error(err.message);
+      setIsPaying(false);
+    }
+  };
 
   return (
     <div className="mt-8 grid gap-5">
-      <Alert tone="success">Verification complete. This payment step is Razorpay-ready but uses a frontend mock action for now.</Alert>
+      <Alert tone="success">Verification complete. You can now securely complete your payment.</Alert>
       <div className="rounded-lg border border-white/10 bg-black/35 p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -119,11 +224,9 @@ function PaymentStep({ planSlug }: { planSlug?: string }) {
           <p className="text-2xl font-semibold text-white">{formatCurrency(plan.priceMonthly)}</p>
         </div>
       </div>
-      <Button onClick={() => {
-        toast.success("Mock payment completed.");
-        dispatch(setMockSession({ isAuthenticated: true, scope: "full", activePlan: plan.slug }));
-        router.push("/checkout/success");
-      }}>Pay {formatCurrency(plan.priceMonthly)}</Button>
+      <Button disabled={isPaying} onClick={handlePayment}>
+        {isPaying ? "Processing..." : `Pay ${formatCurrency(plan.priceMonthly)}`}
+      </Button>
     </div>
   );
 }
@@ -134,12 +237,17 @@ export function CheckoutStepper({ planSlug }: { planSlug?: string }) {
   const dispatch = useAppDispatch();
   const activeStep = step === "account" ? 0 : step === "verify" ? 1 : 2;
   const [mode, setMode] = useState<"new" | "signin">("new");
+  
+  const { plans } = usePlans();
+  const planId = plans.find((item) => item.slug === planSlug)?.id;
+
+  const { organizationId } = useAppSelector((state) => state.checkout);
 
   useEffect(() => {
-    if (isAuthenticated && (step === "account" || step === "verify")) {
+    if (isAuthenticated && organizationId && (step === "account" || step === "verify")) {
       dispatch(setCheckoutStep("payment"));
     }
-  }, [isAuthenticated, step, dispatch]);
+  }, [isAuthenticated, organizationId, step, dispatch]);
 
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
@@ -151,13 +259,14 @@ export function CheckoutStepper({ planSlug }: { planSlug?: string }) {
       </div>
       {step === "account" ? (
         <Tabs tabs={[
-          { label: "New account", content: <div onClick={() => setMode("new")}><AccountStep /></div> },
+          { label: "New account", content: <div onClick={() => setMode("new")}><AccountStep planId={planId} /></div> },
           { label: "Sign in", content: <div onClick={() => setMode("signin")}><SignInStep /></div> },
         ]} />
       ) : null}
       {step === "verify" ? <OtpStep /> : null}
       {step === "payment" ? <PaymentStep planSlug={planSlug} /> : null}
       <p className="mt-6 text-xs text-white/34">Mode: {mode === "new" ? "new checkout account" : "returning account"}</p>
+      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
     </div>
   );
 }

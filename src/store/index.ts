@@ -10,10 +10,9 @@ type SessionState = {
 type CheckoutState = {
   selectedPlan: string | null;
   step: "account" | "verify" | "payment" | "success";
-};
-
-type UiState = {
-  mobileNavOpen: boolean;
+  organizationId: string | null;
+  planId: string | null;
+  userEmail: string | null;
 };
 
 const initialSessionState: SessionState = {
@@ -26,6 +25,9 @@ const initialSessionState: SessionState = {
 const initialCheckoutState: CheckoutState = {
   selectedPlan: null,
   step: "account",
+  organizationId: null,
+  planId: null,
+  userEmail: null,
 };
 
 const sessionSlice = createSlice({
@@ -52,11 +54,18 @@ const checkoutSlice = createSlice({
     setCheckoutStep(state, action: PayloadAction<CheckoutState["step"]>) {
       state.step = action.payload;
     },
+    setCheckoutData(state, action: PayloadAction<Partial<CheckoutState>>) {
+      Object.assign(state, action.payload);
+    },
     resetCheckout() {
       return initialCheckoutState;
     },
   },
 });
+
+type UiState = {
+  mobileNavOpen: boolean;
+};
 
 const initialUiState: UiState = {
   mobileNavOpen: false,
@@ -73,7 +82,7 @@ const uiSlice = createSlice({
 });
 
 export const { setMockSession, clearSession } = sessionSlice.actions;
-export const { selectPlan, setCheckoutStep, resetCheckout } = checkoutSlice.actions;
+export const { selectPlan, setCheckoutStep, setCheckoutData, resetCheckout } = checkoutSlice.actions;
 export const { setMobileNavOpen } = uiSlice.actions;
 
 export const store = configureStore({

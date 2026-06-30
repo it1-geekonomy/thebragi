@@ -21,7 +21,7 @@ export default function CheckoutSuccessPage() {
           <h2 className="text-2xl font-semibold text-white">Payment completed</h2>
           <p className="mt-3 text-sm leading-6 text-white/62">Your workspace has been provisioned and you're ready to go.</p>
           <div className="mt-6">
-            <Link className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#5f9965] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#6bad72]" href={ROUTES.dashboard}>Go to Dashboard</Link>
+            <a className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#5f9965] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#6bad72]" href={process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || "https://crm.geekonomy.in"}>Access your CRM →</a>
           </div>
         </div>
         <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
