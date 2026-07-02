@@ -1,179 +1,54 @@
 "use client";
 
-import Link from "next/link";
-import { yupResolver } from "@hookform/resolvers/yup";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import * as yup from "yup";
-import { setCheckoutStep, setCheckoutData, setMockSession } from "@/store";
+import { setMockSession } from "@/store";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { Button } from "@/shared/components/ui/Button";
-import { Input } from "@/shared/components/ui/Input";
-import { Select } from "@/shared/components/ui/Select";
-import { StepIndicator } from "@/shared/components/ui/StepIndicator";
 import { Alert } from "@/shared/components/ui/Alert";
-import { Tabs } from "@/shared/components/ui/Tabs";
-import { planCatalog } from "@/config/plans";
-import { ROUTES } from "@/config/routes";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { usePlans } from "@/features/pricing/hooks/usePlans";
+import { apiClient } from "@/shared/lib/api-client";
 import Script from "next/script";
-
-const accountSchema = yup.object({
-  email: yup.string().email("Enter a valid email.").required("Work email is required."),
-  name: yup.string().required("Full name is required."),
-  company: yup.string().required("Company is required."),
-  teamSize: yup.string().required("Team size is required."),
-});
-
-const signInSchema = yup.object({
-  email: yup.string().email("Enter a valid email.").required("Work email is required."),
-  password: yup.string().min(8, "Use at least 8 characters.").required("Password is required."),
-});
-
-const otpSchema = yup.object({
-  code: yup.string().length(6, "Enter the 6 digit code.").required("Code is required."),
-});
-
-type AccountValues = yup.InferType<typeof accountSchema>;
-type SignInValues = yup.InferType<typeof signInSchema>;
-type OtpValues = yup.InferType<typeof otpSchema>;
-
-function AccountStep({ planId }: { planId?: string }) {
-  const dispatch = useAppDispatch();
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<AccountValues>({ resolver: yupResolver(accountSchema) });
-
-  return (
-    <form className="mt-8 grid gap-5" onSubmit={handleSubmit(async (values) => {
-      try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/organizations/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            superAdminName: values.name,
-            superAdminEmail: values.email,
-            name: values.company,
-            teamSize: values.teamSize,
-            planId: planId,
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.message || "Registration failed");
-        }
-        const data = await res.json();
-        dispatch(setCheckoutData({
-          organizationId: data.organization.id,
-          userEmail: values.email,
-        }));
-        dispatch(setCheckoutStep("verify"));
-      } catch (err: any) {
-        toast.error(err.message);
-      }
-    })}>
-      <Input id="email" label="Work email" type="email" error={errors.email?.message} {...register("email")} />
-      <Input id="name" label="Full name" error={errors.name?.message} {...register("name")} />
-      <Input id="company" label="Company" error={errors.company?.message} {...register("company")} />
-      <label className="text-sm text-white/72">
-        <span className="mb-2 block font-medium">Team size</span>
-        <Select {...register("teamSize")} defaultValue="">
-          <option value="" disabled>Select team size</option>
-          <option value="1-5">1-5</option>
-          <option value="6-20">6-20</option>
-          <option value="21-50">21-50</option>
-          <option value="51+">51+</option>
-        </Select>
-        {errors.teamSize?.message ? <span className="mt-2 block text-xs text-red-300">{errors.teamSize.message}</span> : null}
-      </label>
-      <Button disabled={isSubmitting}>{isSubmitting ? "Saving..." : "Continue to verification"}</Button>
-    </form>
-  );
-}
-
-function SignInStep() {
-  const dispatch = useAppDispatch();
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<SignInValues>({ resolver: yupResolver(signInSchema) });
-
-  return (
-    <form className="mt-8 grid gap-5" onSubmit={handleSubmit(async () => {
-      toast.success("Signed in for this frontend preview.");
-      dispatch(setCheckoutStep("payment"));
-    })}>
-      <Input id="signin-email" label="Work email" type="email" error={errors.email?.message} {...register("email")} />
-      <Input id="signin-password" label="Password" type="password" error={errors.password?.message} {...register("password")} />
-      <Button disabled={isSubmitting}>{isSubmitting ? "Signing in..." : "Sign in and continue"}</Button>
-    </form>
-  );
-}
-
-function OtpStep() {
-  const dispatch = useAppDispatch();
-  const userEmail = useAppSelector((state) => state.checkout.userEmail);
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<OtpValues>({ resolver: yupResolver(otpSchema) });
-
-  useEffect(() => {
-    if (userEmail) {
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/otp/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: userEmail }),
-      }).catch(console.error);
-    }
-  }, [userEmail]);
-
-  return (
-    <form className="mt-8 grid gap-5" onSubmit={handleSubmit(async (values) => {
-      try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/otp/verify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: userEmail, otp: values.code }),
-        });
-        if (!res.ok) throw new Error("Invalid code");
-        toast.success("Email verified!");
-        dispatch(setCheckoutStep("payment"));
-      } catch (err: any) {
-        toast.error(err.message);
-      }
-    })}>
-      <Alert tone="info">Check your email for the verification code.</Alert>
-      <Input id="code" label="Verification code" inputMode="numeric" maxLength={6} error={errors.code?.message} {...register("code")} />
-      <div className="flex flex-wrap gap-3">
-        <Button disabled={isSubmitting}>{isSubmitting ? "Verifying..." : "Verify code"}</Button>
-        <Button type="button" variant="secondary" onClick={() => {
-           fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/otp/send`, {
-             method: "POST",
-             headers: { "Content-Type": "application/json" },
-             body: JSON.stringify({ email: userEmail }),
-           }).then(() => toast.success("Code resent!"));
-        }}>Resend code</Button>
-      </div>
-    </form>
-  );
-}
 
 function PaymentStep({ planSlug }: { planSlug?: string }) {
   const dispatch = useAppDispatch();
   const router = useRouter();
-  const { organizationId, userEmail } = useAppSelector((state) => state.checkout);
-  const { plans } = usePlans();
-  const plan = plans.find((item) => item.slug === planSlug) ?? plans[2];
+  const { organizationId: checkoutOrgId, userEmail: checkoutEmail } = useAppSelector((state) => state.checkout);
+  const { organizationId: sessionOrgId, userName } = useAppSelector((state) => state.session);
+  const organizationId = checkoutOrgId || sessionOrgId;
+  const userEmail = checkoutEmail || userName;
+  const { plans, isLoading } = usePlans();
+  const plan = plans.find((item) => item.slug === planSlug) ?? plans[0];
   const planId = plan?.id;
   const [isPaying, setIsPaying] = useState(false);
 
+  if (isLoading) {
+    return <div className="mt-8 text-center text-white/70">Loading plan details...</div>;
+  }
+
+  if (!plan) {
+    return <div className="mt-8 text-center text-red-500">Plan not found. Please select a valid plan.</div>;
+  }
+
+
   const handlePayment = async () => {
+    if (!organizationId) {
+      toast.error("No organization linked to your account. Please sign in using OTP or Password (not quick login).");
+      return;
+    }
+    if (!planId) {
+      toast.error("Plan not found. Please go back to pricing and select a plan.");
+      return;
+    }
     setIsPaying(true);
     try {
-      const orderRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/razorpay/create-order`, {
+      const order = await apiClient<{ id: string; amount: number }>("/razorpay/create-order", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ organizationId, planId }),
       });
-      if (!orderRes.ok) throw new Error("Failed to create order");
-      const order = await orderRes.json();
-      
+
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         amount: order.amount,
@@ -182,29 +57,18 @@ function PaymentStep({ planSlug }: { planSlug?: string }) {
         name: "Bragi",
         description: `${plan.name} Subscription`,
         handler: async (response: any) => {
-          const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/razorpay/verify`, {
+          await apiClient("/razorpay/verify", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...response,
-              organizationId,
-              planId,
-            }),
+            body: JSON.stringify({ ...response, organizationId, planId }),
           });
-          if (!verifyRes.ok) throw new Error("Payment verification failed");
-          
           dispatch(setMockSession({ isAuthenticated: true, scope: "full", activePlan: plan.slug }));
           router.push("/checkout/success");
         },
-        prefill: {
-          email: userEmail,
-        },
+        prefill: { email: userEmail },
         theme: { color: "#7dc890" },
       };
       const rzp = new (window as any).Razorpay(options);
-      rzp.on('payment.failed', function () {
-        setIsPaying(false);
-      });
+      rzp.on("payment.failed", () => setIsPaying(false));
       rzp.open();
     } catch (err: any) {
       toast.error(err.message);
@@ -214,6 +78,13 @@ function PaymentStep({ planSlug }: { planSlug?: string }) {
 
   return (
     <div className="mt-8 grid gap-5">
+      {!organizationId && (
+        <Alert tone="info">
+          ⚠️ No organization found for your account. Please{" "}
+          <a href={`/sign-in?returnTo=/checkout?plan=${planSlug}`} className="underline">sign in again</a>{" "}
+          using OTP or Password tab to proceed with payment.
+        </Alert>
+      )}
       <Alert tone="success">Verification complete. You can now securely complete your payment.</Alert>
       <div className="rounded-lg border border-white/10 bg-black/35 p-5">
         <div className="flex items-center justify-between gap-4">
@@ -224,7 +95,7 @@ function PaymentStep({ planSlug }: { planSlug?: string }) {
           <p className="text-2xl font-semibold text-white">{formatCurrency(plan.priceMonthly)}</p>
         </div>
       </div>
-      <Button disabled={isPaying} onClick={handlePayment}>
+      <Button disabled={isPaying || !organizationId} onClick={handlePayment}>
         {isPaying ? "Processing..." : `Pay ${formatCurrency(plan.priceMonthly)}`}
       </Button>
     </div>
@@ -232,40 +103,91 @@ function PaymentStep({ planSlug }: { planSlug?: string }) {
 }
 
 export function CheckoutStepper({ planSlug }: { planSlug?: string }) {
-  const step = useAppSelector((state) => state.checkout.step);
-  const isAuthenticated = useAppSelector((state) => state.session.isAuthenticated);
+  const router = useRouter();
   const dispatch = useAppDispatch();
-  const activeStep = step === "account" ? 0 : step === "verify" ? 1 : 2;
-  const [mode, setMode] = useState<"new" | "signin">("new");
-  
-  const { plans } = usePlans();
-  const planId = plans.find((item) => item.slug === planSlug)?.id;
+  const isAuthenticated = useAppSelector((state) => state.session.isAuthenticated);
+  const { organizationId: checkoutOrgId, userEmail: checkoutEmail } = useAppSelector((state) => state.checkout);
+  const { organizationId: sessionOrgId, userEmail: sessionEmail } = useAppSelector((state) => state.session);
+  const organizationId = checkoutOrgId || sessionOrgId;
+  const userEmail = checkoutEmail || sessionEmail;
+  const [isCreatingOrg, setIsCreatingOrg] = useState(false);
+  const isCreatingRef = useRef(false);
 
-  const { organizationId } = useAppSelector((state) => state.checkout);
+  // If authenticated but organizationId missing (e.g. mock sign-in), fetch it from /auth/session
+  useEffect(() => {
+    if (isAuthenticated && !organizationId) {
+      const token = localStorage.getItem("accessToken");
+      if (token) {
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/session`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data?.organizationId) {
+              dispatch(setMockSession({ organizationId: data.organizationId }));
+            }
+          })
+          .catch(() => {/* ignore — will show error at payment time */});
+      }
+    }
+  }, [isAuthenticated, organizationId, dispatch]);
 
   useEffect(() => {
-    if (isAuthenticated && organizationId && (step === "account" || step === "verify")) {
-      dispatch(setCheckoutStep("payment"));
+    if (!isAuthenticated) {
+      const returnTo = planSlug ? `/checkout?plan=${planSlug}` : "/checkout";
+      router.push(`/sign-in?returnTo=${encodeURIComponent(returnTo)}`);
     }
-  }, [isAuthenticated, organizationId, step, dispatch]);
+  }, [isAuthenticated, router, planSlug]);
+
+  const handleCreateOrg = useCallback(async () => {
+    if (!userEmail || isCreatingRef.current) return;
+    isCreatingRef.current = true;
+    setIsCreatingOrg(true);
+    try {
+      const defaultName = `Workspace - ${userEmail.split("@")[0]} - ${Math.floor(Math.random() * 10000)}`;
+      const res = await apiClient<{ organization: any; user: any }>("/organizations/register", {
+        method: "POST",
+        body: JSON.stringify({ name: defaultName, superAdminEmail: userEmail }),
+      });
+      if (res.organization?.id) {
+        dispatch(setMockSession({ organizationId: res.organization.id }));
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to initialize checkout.");
+      setIsCreatingOrg(false); // only reset on error so we don't spam
+      isCreatingRef.current = false;
+    }
+  }, [userEmail, dispatch]);
+
+  useEffect(() => {
+    // Automatically create a default workspace if the user doesn't have one
+    // so we can proceed to payment without asking for a company name.
+    if (isAuthenticated && !organizationId && userEmail && !isCreatingRef.current) {
+      handleCreateOrg();
+    }
+  }, [isAuthenticated, organizationId, userEmail, handleCreateOrg]);
+
+  if (!isAuthenticated) {
+    return null; // Return nothing while redirecting
+  }
 
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
-      <StepIndicator steps={["Account", "Verify", "Payment"]} active={activeStep} />
       <div className="mt-8">
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">Checkout</p>
-        <h1 className="mt-3 text-3xl font-semibold text-white">Complete your Bragi setup</h1>
-        <p className="mt-3 text-sm leading-6 text-white/58">This frontend flow mirrors the production checkout path without calling backend services yet.</p>
+        <h1 className="mt-3 text-3xl font-semibold text-white">Complete your payment</h1>
+        <p className="mt-3 text-sm leading-6 text-white/58">Securely process your subscription.</p>
       </div>
-      {step === "account" ? (
-        <Tabs tabs={[
-          { label: "New account", content: <div onClick={() => setMode("new")}><AccountStep planId={planId} /></div> },
-          { label: "Sign in", content: <div onClick={() => setMode("signin")}><SignInStep /></div> },
-        ]} />
-      ) : null}
-      {step === "verify" ? <OtpStep /> : null}
-      {step === "payment" ? <PaymentStep planSlug={planSlug} /> : null}
-      <p className="mt-6 text-xs text-white/34">Mode: {mode === "new" ? "new checkout account" : "returning account"}</p>
+      
+      {!organizationId ? (
+        <div className="mt-8 flex flex-col items-center justify-center space-y-4 rounded-lg border border-white/10 bg-black/35 p-10">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent"></div>
+          <p className="text-sm font-medium text-white/70">Initializing your secure checkout...</p>
+        </div>
+      ) : (
+        <PaymentStep planSlug={planSlug} />
+      )}
+      
       <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
     </div>
   );

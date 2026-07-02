@@ -1,12 +1,26 @@
+"use client";
+
 import Link from "next/link";
 import { Card } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
-import { planCatalog } from "@/config/plans";
 import { ROUTES } from "@/config/routes";
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { usePlans } from "@/features/pricing/hooks/usePlans";
 
 export function PlanSummaryPanel({ planSlug }: { planSlug?: string }) {
-  const plan = planCatalog.find((item) => item.slug === planSlug) ?? planCatalog[2];
+  const { plans, isLoading } = usePlans();
+  const plan = plans.find((item) => item.slug === planSlug) ?? plans[0];
+
+  if (isLoading || !plan) {
+    return (
+      <Card className="sticky top-24 p-6">
+        <div className="flex flex-col items-center justify-center py-10 gap-3">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent" />
+          <p className="text-sm text-white/50">Loading plan details...</p>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="sticky top-24 p-6">
@@ -20,9 +34,6 @@ export function PlanSummaryPanel({ planSlug }: { planSlug?: string }) {
       <ul className="mt-6 grid gap-3 text-sm text-white/66">
         {plan.modules.map((module) => <li key={module} className="flex gap-2"><span className="text-[#7dc890]">+</span>{module}</li>)}
       </ul>
-      <div className="mt-6 rounded-md border border-white/10 bg-black/35 p-4 text-xs leading-5 text-white/46">
-        Frontend-only checkout preview. Payment, OTP, and provisioning states are mocked until APIs are connected.
-      </div>
       <Link className="mt-5 inline-flex text-sm font-semibold text-[#a8dfb3] hover:text-white" href={ROUTES.pricing}>Change plan</Link>
     </Card>
   );

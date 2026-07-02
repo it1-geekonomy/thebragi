@@ -19,7 +19,7 @@ type BillingCycle = "monthly" | "annual";
 function PlanSkeletons() {
   return (
     <div className="mx-auto mt-10 grid max-w-7xl gap-5 lg:grid-cols-3">
-      {["sales", "projects", "full"].map((item) => (
+      {[1, 2, 3].map((item) => (
         <Card key={item} className="p-6">
           <Skeleton className="h-7 w-36" />
           <Skeleton className="mt-4 h-16 w-full" />
@@ -75,12 +75,16 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
         </div>
         {isLoading ? (
           <PlanSkeletons />
+        ) : plans.length === 0 ? (
+          <div className="mx-auto mt-10 max-w-7xl text-center py-16">
+            <p className="text-lg text-white/60">No plans available at the moment. Please check back later.</p>
+          </div>
         ) : (
-          <div className="mx-auto mt-10 grid max-w-7xl gap-5 lg:grid-cols-3">
+          <div className={`mx-auto mt-10 grid max-w-7xl gap-5 ${plans.length >= 3 ? 'lg:grid-cols-3' : plans.length === 2 ? 'lg:grid-cols-2 max-w-4xl' : 'max-w-lg'}`}>
             {plans.map((plan) => <PlanCard key={plan.slug} plan={plan} billingCycle={billingCycle} highlighted={highlightedPlan === plan.slug || (!highlightedPlan && plan.popular)} />)}
           </div>
         )}
-        <p className="mx-auto mt-6 max-w-7xl text-xs leading-5 text-white/38">All prices shown in INR. Billed monthly unless annual preview is selected. Terms apply. Backend plan data can replace this static preview without changing the page structure.</p>
+        <p className="mx-auto mt-6 max-w-7xl text-xs leading-5 text-white/38">All prices shown in INR. Billed monthly unless annual preview is selected. Terms apply.</p>
       </section>
 
       <section className="border-y border-white/10 bg-[#050705] px-5 py-16 sm:px-8 lg:px-10">
@@ -90,7 +94,7 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">Comparison</p>
               <h2 className="mt-3 text-3xl font-semibold text-white">Compare core plan access</h2>
             </div>
-            <Link className="text-sm font-semibold text-[#a8dfb3] hover:text-white" href={ROUTES.checkout("bragi-full")}>Buy Bragi Full</Link>
+            {plans.length > 0 && <Link className="text-sm font-semibold text-[#a8dfb3] hover:text-white" href={ROUTES.checkout(plans[plans.length - 1].slug)}>Buy {plans[plans.length - 1].name}</Link>}
           </div>
           <PlanComparisonTable />
         </div>

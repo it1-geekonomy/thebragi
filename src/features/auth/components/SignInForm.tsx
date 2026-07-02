@@ -1,14 +1,15 @@
 "use client";
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { sendOtp, verifyOtp } from "../api";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as yup from "yup";
 import { useAppDispatch } from "@/store/hooks";
 import { setMockSession } from "@/store";
+import { apiClient } from "@/shared/lib/api-client";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
 import { Tabs } from "@/shared/components/ui/Tabs";
@@ -34,12 +35,40 @@ type OtpVerifyValues = yup.InferType<typeof otpVerifySchema>;
 function PasswordMode() {
   const dispatch = useAppDispatch();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || "/";
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<PasswordValues>({ resolver: yupResolver(passwordSchema) });
   return (
     <form className="grid gap-5" onSubmit={handleSubmit(async (values) => {
-      dispatch(setMockSession({ isAuthenticated: true, userName: values.email.split("@")[0], scope: "full" }));
-      toast.success("Signed in successfully.");
-      router.push("/");
+      try {
+        const data = await apiClient<{ accessToken: string; user: any }>("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email: values.email, password: values.password }),
+        });
+
+        // Backend prefixes token with "Bearer " — strip it for raw storage
+        const rawToken = (data.accessToken ?? "").replace(/^Bearer\s+/i, "");
+        localStorage.setItem("accessToken", rawToken);
+
+        if ((data as any).requires_org_selection) {
+          // Auto-select the first org for the checkout flow
+          const orgs: { id: string }[] = (data as any).orgs ?? [];
+          const selected = await apiClient<{ accessToken: string; user: any }>("/auth/select-organization", {
+            method: "POST",
+            body: JSON.stringify({ sessionKey: (data as any).session_key, organizationId: orgs[0]?.id }),
+          });
+          const selectedToken = (selected.accessToken ?? "").replace(/^Bearer\s+/i, "");
+          localStorage.setItem("accessToken", selectedToken);
+          dispatch(setMockSession({ isAuthenticated: true, userEmail: values.email, userName: selected.user?.name ?? values.email.split("@")[0], scope: "full", organizationId: selected.user?.organizationId ?? orgs[0]?.id }));
+        } else {
+          dispatch(setMockSession({ isAuthenticated: true, userEmail: values.email, userName: data.user?.name ?? values.email.split("@")[0], scope: "full", organizationId: data.user?.organizationId ?? null }));
+        }
+
+        toast.success("Signed in successfully.");
+        router.push(returnTo);
+      } catch (err: any) {
+        toast.error(err.message || "Invalid email or password.");
+      }
     })}>
       <Input id="email" label="Work email" type="email" error={errors.email?.message} {...register("email")} />
       <Input id="password" label="Password" type="password" error={errors.password?.message} {...register("password")} />
@@ -51,6 +80,8 @@ function PasswordMode() {
 function OtpMode() {
   const dispatch = useAppDispatch();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || "/";
   const [sent, setSent] = useState(false);
   const [email, setEmail] = useState("");
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<OtpRequestValues>({ resolver: yupResolver(otpRequestSchema) });
@@ -61,10 +92,27 @@ function OtpMode() {
       <form className="grid gap-5" onSubmit={handleSubmitVerify(async (values) => {
         try {
           const data = await verifyOtp(email, values.code);
-          localStorage.setItem("accessToken", data.accessToken);
-          dispatch(setMockSession({ isAuthenticated: true, userName: data.user?.name ?? email.split("@")[0], scope: "full" }));
+
+          // Backend prefixes token with "Bearer " — strip it for raw storage
+          const rawToken = (data.accessToken ?? "").replace(/^Bearer\s+/i, "");
+          localStorage.setItem("accessToken", rawToken);
+
+          if ((data as any).requires_org_selection) {
+            // Auto-select the first org for the checkout flow
+            const orgs: { id: string }[] = (data as any).orgs ?? [];
+            const selected = await apiClient<{ accessToken: string; user: any }>("/auth/select-organization", {
+              method: "POST",
+              body: JSON.stringify({ sessionKey: (data as any).session_key, organizationId: orgs[0]?.id }),
+            });
+            const selectedToken = (selected.accessToken ?? "").replace(/^Bearer\s+/i, "");
+            localStorage.setItem("accessToken", selectedToken);
+            dispatch(setMockSession({ isAuthenticated: true, userEmail: email, userName: selected.user?.name ?? email.split("@")[0], scope: "full", organizationId: selected.user?.organizationId ?? orgs[0]?.id }));
+          } else {
+            dispatch(setMockSession({ isAuthenticated: true, userEmail: email, userName: data.user?.name ?? email.split("@")[0], scope: "full", organizationId: data.user?.organizationId ?? null }));
+          }
+
           toast.success("Verified! Signed in successfully.");
-          router.push("/");
+          router.push(returnTo);
         } catch (err: any) {
           toast.error(err.message || "Failed to verify OTP.");
         }
@@ -94,37 +142,22 @@ function OtpMode() {
   );
 }
 
-function DummySignIn({ label, userName, scope, activePlan }: { label: string; userName: string; scope: "checkout" | "full", activePlan?: string }) {
-  const dispatch = useAppDispatch();
-  const router = useRouter();
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        dispatch(setMockSession({ isAuthenticated: true, userName, scope, activePlan: activePlan || null }));
-        toast.success(`Signed in as ${userName}`);
-        router.push("/");
-      }}
-      className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-left text-sm font-medium text-white/78 transition hover:border-white/20 hover:bg-white/[0.07]"
-    >
-      <span className="block font-semibold text-white">{label}</span>
-      <span className="mt-0.5 block text-xs text-white/44">{userName}</span>
-    </button>
-  );
-}
+
 
 export function SignInForm() {
   return (
+    <Suspense fallback={null}>
+      <SignInFormContent />
+    </Suspense>
+  );
+}
+
+function SignInFormContent() {
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || "/";
+
+  return (
     <div className="grid gap-5">
-      <div className="grid gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/44">Quick logins</p>
-        <DummySignIn label="Subscribed user" userName="Riya Sharma" scope="full" activePlan="bragi-full" />
-        <DummySignIn label="Non-subscribed user" userName="Alex Rivera" scope="checkout" />
-      </div>
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10" /></div>
-        <div className="relative flex justify-center"><span className="bg-black px-3 text-xs text-white/38">or sign in with email</span></div>
-      </div>
       <Tabs tabs={[{ label: "Password", content: <PasswordMode /> }, { label: "OTP", content: <OtpMode /> }]} />
     </div>
   );

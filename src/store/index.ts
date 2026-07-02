@@ -3,8 +3,10 @@ import { configureStore, createSlice, type PayloadAction } from "@reduxjs/toolki
 type SessionState = {
   isAuthenticated: boolean;
   userName: string | null;
+  userEmail: string | null;
   scope: "anonymous" | "checkout" | "full";
   activePlan: string | null;
+  organizationId: string | null;
 };
 
 type CheckoutState = {
@@ -18,8 +20,10 @@ type CheckoutState = {
 const initialSessionState: SessionState = {
   isAuthenticated: false,
   userName: null,
+  userEmail: null,
   scope: "anonymous",
   activePlan: null,
+  organizationId: null,
 };
 
 const initialCheckoutState: CheckoutState = {
