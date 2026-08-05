@@ -29,19 +29,22 @@ import {
 import { saveVerifiedBilling } from "@/features/checkout/lib/billing-session";
 import { computeOrderTotals } from "@/features/checkout/lib/pricing";
 import { OrderSummaryPanel } from "@/features/checkout/components/OrderSummaryPanel";
-import {
-  PaymentMethodSelector,
-  type PaymentMethod,
-} from "@/features/checkout/components/PaymentMethodSelector";
+
 
 function syncCheckoutUrl(params: CheckoutParams) {
   const path = buildCheckoutPath(params);
   window.history.replaceState(null, "", path);
 }
 
-function applyGstLookup(setLegalName: (v: string) => void, setPan: (v: string) => void, result: GstinLookup) {
-  setLegalName(result.legalName);
-  setPan(result.pan);
+function applyGstLookup(
+  setLegalName: (v: string) => void,
+  setPan: (v: string) => void,
+  setAddress: (v: string) => void,
+  result: GstinLookup,
+) {
+  if (result.legalName) setLegalName(result.legalName);
+  if (result.pan) setPan(result.pan);
+  if (result.address) setAddress(result.address);
 }
 
 function clearGstFields(setLegalName: (v: string) => void, setPan: (v: string) => void) {
@@ -73,7 +76,6 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   const [gstLookup, setGstLookup] = useState<GstinLookup | null>(null);
   const [gstChecking, setGstChecking] = useState(false);
   const [locationResolving, setLocationResolving] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [isPaying, setIsPaying] = useState(false);
   const [isCreatingOrg, setIsCreatingOrg] = useState(false);
   const gstRequestId = useRef(0);
@@ -182,7 +184,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         if (id !== gstRequestId.current) return;
         setGstChecking(false);
         setGstLookup(result);
-        if (result?.valid) applyGstLookup(setLegalName, setPan, result);
+        if (result?.valid) applyGstLookup(setLegalName, setPan, setAddress, result);
         else clearGstFields(setLegalName, setPan);
       });
     }, 400);
@@ -236,13 +238,14 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         toast.error(verified?.message || "GSTIN must be verified against GSTN before payment.");
         return;
       }
-      applyGstLookup(setLegalName, setPan, verified);
+      applyGstLookup(setLegalName, setPan, setAddress, verified);
     } finally {
       setGstChecking(false);
     }
 
-    if (!verified!.legalName.trim() || !verified!.pan.trim()) {
-      toast.error("GST lookup did not return legal name and PAN from GSTN.");
+    const finalPan = verified!.pan.trim() || pan.trim();
+    if (!verified!.legalName.trim() || !finalPan) {
+      toast.error("GST lookup did not return legal name, and PAN is missing.");
       return;
     }
     if (!address.trim()) {
@@ -261,7 +264,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     saveVerifiedBilling({
       gstin: verified!.gstin,
       legalName: verified!.legalName,
-      pan: verified!.pan,
+      pan: finalPan,
       stateCode,
       stateName,
       address: address.trim(),
@@ -290,11 +293,10 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           planId: plan.id,
           seats,
           billingCycle: cycle,
-          paymentMethod,
           billing: {
             legalName: verified!.legalName,
             gstin: verified!.gstin,
-            pan: verified!.pan,
+            pan: finalPan,
             address: address.trim(),
             stateCode,
             stateName,
@@ -310,7 +312,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         currency: "INR",
         order_id: order.id,
         name: "Bragi",
-        description: `${plan.name} · ${seats} seats · ${cycle} · ${paymentMethod}`,
+        description: `${plan.name} · ${seats} seats · ${cycle}`,
         handler: async (response: Record<string, string>) => {
           await apiClient("/razorpay/verify", {
             method: "POST",
@@ -323,9 +325,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         theme: { color: "#7dc890" },
       };
 
-      if (paymentMethod === "neft") {
-        toast.message("NEFT / bank transfer: use the bank details in the payment window.");
-      }
+
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rzp = new (window as any).Razorpay(options);
@@ -337,7 +337,16 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     }
   };
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-white">
+        <p>Redirecting to secure sign-in...</p>
+        <Link href={buildSignInForCheckout({ plan: plan.slug, seats, cycle })} className="text-[#a8dfb3] underline">
+          Click here if you are not redirected automatically
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -379,7 +388,6 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 label="Registered legal name"
                 value={legalName}
                 readOnly
-                placeholder="From GSTN lookup"
               />
 
               <div className="grid gap-5 sm:grid-cols-2">
@@ -406,7 +414,13 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                     {gstLookup?.valid ? <span className="text-white/42">{gstLookup.message}</span> : null}
                   </div>
                 </div>
-                <Input id="pan" label="PAN" value={pan} readOnly placeholder="From GSTN lookup" />
+                <Input
+                  id="pan"
+                  label="PAN"
+                  value={pan}
+                  onChange={(e) => setPan(e.target.value.toUpperCase())}
+                  maxLength={10}
+                />
               </div>
 
               <label className="block text-sm text-white/72" htmlFor="address">
@@ -429,19 +443,17 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                   label="State — place of supply"
                   value={stateName}
                   readOnly
-                  placeholder="From billing address"
                 />
                 <Input
                   id="postal"
                   label="Postal code"
                   value={postalCode}
                   readOnly
-                  placeholder="From billing address"
                 />
-                <Input id="country" label="Country" value={country} readOnly placeholder="From billing address" />
+                <Input id="country" label="Country" value={country} readOnly />
               </div>
 
-              <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} />
+
 
               {!organizationId ? (
                 <Alert tone="info">
@@ -485,7 +497,9 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           className="order-1 lg:order-2"
         />
       </div>
-      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+      {canPay && (
+        <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+      )}
     </>
   );
 }
