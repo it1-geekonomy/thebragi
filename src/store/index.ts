@@ -1,5 +1,7 @@
 import { configureStore, createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
+export type SubscriptionStatus = "trialing" | "active" | "none";
+
 type SessionState = {
   isAuthenticated: boolean;
   userName: string | null;
@@ -7,6 +9,10 @@ type SessionState = {
   scope: "anonymous" | "checkout" | "full";
   activePlan: string | null;
   organizationId: string | null;
+  isNewSignup: boolean;
+  subscriptionStatus: SubscriptionStatus | null;
+  trialStartedAt: string | null;
+  trialEndsAt: string | null;
 };
 
 type CheckoutState = {
@@ -24,6 +30,10 @@ const initialSessionState: SessionState = {
   scope: "anonymous",
   activePlan: null,
   organizationId: null,
+  isNewSignup: false,
+  subscriptionStatus: null,
+  trialStartedAt: null,
+  trialEndsAt: null,
 };
 
 const initialCheckoutState: CheckoutState = {
@@ -55,15 +65,6 @@ const checkoutSlice = createSlice({
       state.selectedPlan = action.payload;
       state.step = "account";
     },
-    setCheckoutStep(state, action: PayloadAction<CheckoutState["step"]>) {
-      state.step = action.payload;
-    },
-    setCheckoutData(state, action: PayloadAction<Partial<CheckoutState>>) {
-      Object.assign(state, action.payload);
-    },
-    resetCheckout() {
-      return initialCheckoutState;
-    },
   },
 });
 
@@ -86,7 +87,7 @@ const uiSlice = createSlice({
 });
 
 export const { setMockSession, clearSession } = sessionSlice.actions;
-export const { selectPlan, setCheckoutStep, setCheckoutData, resetCheckout } = checkoutSlice.actions;
+export const { selectPlan } = checkoutSlice.actions;
 export const { setMobileNavOpen } = uiSlice.actions;
 
 export const store = configureStore({

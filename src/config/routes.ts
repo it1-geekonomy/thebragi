@@ -1,14 +1,27 @@
+import {
+  buildCheckoutPath,
+  type BillingCycle,
+  type CheckoutParams,
+} from "@/features/checkout/lib/checkout-params";
+
+export type { BillingCycle, CheckoutParams };
+
 export const ROUTES = {
   home: "/",
   features: "/features",
   pricing: "/pricing",
   contact: "/contact",
-  checkout: (plan: string) => `/checkout?plan=${plan}`,
+  checkout: (plan: string, opts?: { seats?: number; cycle?: BillingCycle }) =>
+    buildCheckoutPath({ plan, seats: opts?.seats, cycle: opts?.cycle }),
+  /** Canonical auth page — sign-in and sign-up share `/sign-in`. */
   signIn: "/sign-in",
-  signUp: "/sign-up",
+  signUp: (plan?: string) => (plan ? `/sign-in?mode=signup&plan=${plan}` : "/sign-in?mode=signup"),
   verify: "/verify",
   dashboard: "/app/dashboard",
   onboarding: "/app/onboarding",
+  billingConfirmation: "/billing-confirmation",
+  continue: "/continue",
+  subscriptionExpired: "/subscription-expired",
   account: {
     profile: "/account/profile",
     billing: "/account/billing",

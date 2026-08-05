@@ -6,7 +6,7 @@ import { ROUTES } from "@/config/routes";
 export function HeroSection() {
   return (
     <section className="relative min-h-[calc(100vh-4rem)] overflow-hidden bg-black text-white">
-      <Image src="/Bragi Waitlist background-02.jpg" alt="" fill priority sizes="100vw" className="pointer-events-none object-cover object-[62%_center] lg:object-right" />
+      <Image src="/bragi-hero.webp" alt="" fill priority sizes="100vw" className="pointer-events-none object-cover object-[62%_center] lg:object-right" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,#000_0%,#000_30%,rgba(0,0,0,0.92)_49%,rgba(0,0,0,0.34)_68%,rgba(0,0,0,0.02)_100%)] lg:bg-[linear-gradient(90deg,#000_0%,#000_38%,rgba(0,0,0,0.92)_57%,rgba(0,0,0,0.28)_76%,rgba(0,0,0,0)_100%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.45)_56%,#000_100%)]" />
       <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col justify-center px-5 py-20 text-center sm:px-8 lg:px-10">

@@ -4,13 +4,12 @@ import { type FormEvent, useState } from "react";
 
 const formFields = [
   { id: "name", label: "YOUR NAME", type: "text" },
-  { id: "email", label: "WORK EMAIL", type: "email" },
+  { id: "email", label: "Email", type: "email" },
   { id: "company", label: "COMPANY", type: "text" },
-  { id: "teamSize", label: "TEAM SIZE", type: "text" },
 ];
 
 export function WaitlistSection() {
-  const [values, setValues] = useState({ name: "", email: "", company: "", teamSize: "" });
+  const [values, setValues] = useState({ name: "", email: "", company: "" });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");

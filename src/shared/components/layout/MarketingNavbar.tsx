@@ -7,6 +7,7 @@ import { marketingNav } from "@/config/nav";
 import { ROUTES } from "@/config/routes";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setMobileNavOpen, clearSession } from "@/store";
+import { hasActiveSubscription } from "@/features/auth/lib/subscription";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { CTAButton } from "@/shared/components/marketing/CTAButton";
 import { DropdownMenu } from "@/shared/components/ui/DropdownMenu";
@@ -44,6 +45,7 @@ export function MarketingNavbar() {
   const initials = session.userName
     ? session.userName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "?";
+  const canOpenApp = session.isAuthenticated && hasActiveSubscription(session.subscriptionStatus);
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-black/82 backdrop-blur-xl">
@@ -72,11 +74,11 @@ export function MarketingNavbar() {
                     <p className="mt-0.5 text-xs text-white/38">Signed in</p>
                   </div>
                   <div className="mt-1 grid gap-0.5">
-                    {session.scope === "full" ? (
-                      <Link href={ROUTES.dashboard} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Dashboard</Link>
-                    ) : (
+                    {canOpenApp ? (
+                      <Link href={ROUTES.continue} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Open workspace</Link>
+                    ) : session.isAuthenticated ? (
                       <Link href={ROUTES.pricing} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Choose a plan</Link>
-                    )}
+                    ) : null}
                     <Link href={ROUTES.account.profile} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Account settings</Link>
                     <button
                       onClick={() => {
@@ -117,11 +119,11 @@ export function MarketingNavbar() {
                     <p className="text-xs text-white/38">Signed in</p>
                   </div>
                 </div>
-                {session.scope === "full" ? (
-                  <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.dashboard} onClick={() => dispatch(setMobileNavOpen(false))}>Dashboard</Link>
-                ) : (
+                {canOpenApp ? (
+                  <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.continue} onClick={() => dispatch(setMobileNavOpen(false))}>Open workspace</Link>
+                ) : session.isAuthenticated ? (
                   <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.pricing} onClick={() => dispatch(setMobileNavOpen(false))}>Choose a plan</Link>
-                )}
+                ) : null}
                 <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.account.profile} onClick={() => dispatch(setMobileNavOpen(false))}>Account settings</Link>
                 <button className="w-full rounded-md px-3 py-2 text-left text-white/44 hover:bg-white/8 hover:text-white/72" onClick={() => { dispatch(clearSession()); dispatch(setMobileNavOpen(false)); localStorage.removeItem("accessToken"); }}>Sign out</button>
               </>

@@ -16,7 +16,7 @@ export default function ContactPage() {
         </SectionHeading>
         <form className="mx-auto mt-10 grid max-w-2xl gap-5 rounded-lg border border-white/10 bg-white/[0.04] p-6">
           <Input id="name" label="Name" placeholder="Your name" />
-          <Input id="email" label="Work email" type="email" placeholder="you@company.com" />
+          <Input id="email" label="Email" type="email" placeholder="you@company.com" />
           <label className="text-sm text-white/72">
             <span className="mb-2 block font-medium">Message</span>
             <textarea className="min-h-32 w-full rounded-md border border-white/12 bg-black/35 px-4 py-3 text-white outline-none focus:border-[#7dc890]" placeholder="How can we help?" />

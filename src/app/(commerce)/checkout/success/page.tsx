@@ -1,8 +1,12 @@
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { Metadata } from "next";
 import { getCrmLoginUrl } from "@/config/crm";
+import { CheckoutSuccessClient } from "@/features/checkout/components/CheckoutSuccessClient";
+
+export const metadata: Metadata = { title: "Checkout complete" };
 
 export default async function CheckoutSuccessPage() {
   const host = (await headers()).get("host");
-  redirect(getCrmLoginUrl(host));
+  const crmLoginUrl = getCrmLoginUrl(host);
+  return <CheckoutSuccessClient crmLoginUrl={crmLoginUrl} />;
 }

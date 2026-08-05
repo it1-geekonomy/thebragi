@@ -4,17 +4,37 @@ export type ApiError = {
   status: number;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
-export async function apiClient<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
+const NETWORK_ERROR_MESSAGE = `Backend unreachable at ${API_URL}. Start the CRM API, or use Create account for local demo.`;
+
+function isNetworkFailure(error: unknown) {
+  return error instanceof TypeError || (error instanceof DOMException && error.name === "AbortError");
+}
+
+export async function apiClient<T>(path: string, init?: RequestInit, timeoutMs = 8000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      signal: controller.signal,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...init?.headers,
+      },
+    });
+  } catch (error) {
+    if (isNetworkFailure(error)) {
+      throw { code: "NETWORK_ERROR", message: NETWORK_ERROR_MESSAGE, status: 0 } satisfies ApiError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!response.ok) {
     let message = "Something went wrong.";

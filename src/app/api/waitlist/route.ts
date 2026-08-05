@@ -5,7 +5,6 @@ type WaitlistPayload = {
   name?: string;
   email?: string;
   company?: string;
-  teamSize?: string;
 };
 
 function escapeHtml(value: string) {
@@ -30,11 +29,10 @@ export async function POST(request: Request) {
   const name = payload.name?.trim();
   const email = payload.email?.trim();
   const company = payload.company?.trim();
-  const teamSize = payload.teamSize?.trim();
 
   if (!name || !email) {
     return NextResponse.json(
-      { error: "Name and work email are required." },
+      { error: "Name and Email are required." },
       { status: 400 },
     );
   }
@@ -42,7 +40,6 @@ export async function POST(request: Request) {
   const safeName = escapeHtml(name);
   const safeEmail = escapeHtml(email);
   const safeCompany = escapeHtml(company || "Not provided");
-  const safeTeamSize = escapeHtml(teamSize || "Not provided");
 
   const { error } = await resend.emails.send({
     from: "The Bragi <noreply@thebragi.com>",
@@ -68,18 +65,14 @@ export async function POST(request: Request) {
                 <td style="padding:14px 0;border-bottom:1px solid #16251a;color:#ffffff;font-size:16px;text-align:right;">${safeName}</td>
               </tr>
               <tr>
-                <td style="padding:14px 0;border-bottom:1px solid #16251a;color:#7d8f82;font-size:12px;text-transform:uppercase;letter-spacing:0.18em;">Work email</td>
+                <td style="padding:14px 0;border-bottom:1px solid #16251a;color:#7d8f82;font-size:12px;text-transform:uppercase;letter-spacing:0.18em;">Email</td>
                 <td style="padding:14px 0;border-bottom:1px solid #16251a;color:#ffffff;font-size:16px;text-align:right;">
                   <a href="mailto:${safeEmail}" style="color:#9fe0ae;text-decoration:none;">${safeEmail}</a>
                 </td>
               </tr>
               <tr>
-                <td style="padding:14px 0;border-bottom:1px solid #16251a;color:#7d8f82;font-size:12px;text-transform:uppercase;letter-spacing:0.18em;">Company</td>
-                <td style="padding:14px 0;border-bottom:1px solid #16251a;color:#ffffff;font-size:16px;text-align:right;">${safeCompany}</td>
-              </tr>
-              <tr>
-                <td style="padding:14px 0;color:#7d8f82;font-size:12px;text-transform:uppercase;letter-spacing:0.18em;">Team size</td>
-                <td style="padding:14px 0;color:#ffffff;font-size:16px;text-align:right;">${safeTeamSize}</td>
+                <td style="padding:14px 0;color:#7d8f82;font-size:12px;text-transform:uppercase;letter-spacing:0.18em;">Company</td>
+                <td style="padding:14px 0;color:#ffffff;font-size:16px;text-align:right;">${safeCompany}</td>
               </tr>
             </table>
 
@@ -95,9 +88,8 @@ export async function POST(request: Request) {
       "New Bragi waitlist signup",
       "",
       `Name: ${name}`,
-      `Work email: ${email}`,
+      `Email: ${email}`,
       `Company: ${company || "Not provided"}`,
-      `Team size: ${teamSize || "Not provided"}`,
     ].join("\n"),
   });
 

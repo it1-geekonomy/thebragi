@@ -2,7 +2,6 @@ import { Metadata } from "next";
 import { Card } from "@/shared/components/ui/Card";
 import { Input } from "@/shared/components/ui/Input";
 import { Button } from "@/shared/components/ui/Button";
-import { Select } from "@/shared/components/ui/Select";
 import { Badge } from "@/shared/components/ui/Badge";
 
 export const metadata: Metadata = { title: "Account Profile" };
@@ -30,11 +29,9 @@ export default function AccountProfilePage() {
           <div className="grid gap-5 sm:grid-cols-2">
             <Input id="name" label="Name" defaultValue="Preview user" />
             <Input id="email" label="Email" type="email" defaultValue="founder@company.com" />
-            <Input id="company" label="Company" defaultValue="Preview company" />
-            <label className="text-sm text-white/72">
-              <span className="mb-2 block font-medium">Team size</span>
-              <Select defaultValue="6-20"><option>1-5</option><option>6-20</option><option>21-50</option><option>51+</option></Select>
-            </label>
+            <div className="sm:col-span-2">
+              <Input id="company" label="Company" defaultValue="Preview company" />
+            </div>
           </div>
           <div className="flex flex-wrap gap-3"><Button type="button">Save changes</Button><Button type="button" variant="secondary">Reset preview</Button></div>
         </Card>
