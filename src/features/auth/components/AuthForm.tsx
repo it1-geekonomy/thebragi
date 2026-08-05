@@ -13,7 +13,7 @@ import { useAppDispatch } from "@/store/hooks";
 import { selectPlan, setMockSession, type AppDispatch } from "@/store";
 import { sendOtp, verifyOtp } from "@/features/auth/api";
 import { fetchAuthSessionDetails, getPostAuthDestination } from "@/features/auth/lib/post-auth-routing";
-import { matchDemoUser, PRIMARY_DEMO_USER } from "@/features/auth/lib/demo-auth";
+
 import { createTrialWindow } from "@/features/auth/lib/trial-dates";
 import { apiClient } from "@/shared/lib/api-client";
 import { Button } from "@/shared/components/ui/Button";
@@ -89,33 +89,6 @@ function authHref(mode: AuthMode, plan?: string | null, returnTo?: string | null
   return query ? `${ROUTES.signIn}?${query}` : ROUTES.signIn;
 }
 
-async function completeDemoSignIn(
-  dispatch: AppDispatch,
-  router: ReturnType<typeof useRouter>,
-  demoUser: typeof PRIMARY_DEMO_USER,
-  returnTo: string,
-) {
-  localStorage.setItem("accessToken", `demo-${demoUser.email}`);
-  dispatch(
-    setMockSession({
-      isAuthenticated: true,
-      userEmail: demoUser.email,
-      userName: demoUser.name,
-      scope: "full",
-      organizationId: `demo-org-${demoUser.email}`,
-      isNewSignup: false,
-      subscriptionStatus: demoUser.subscriptionStatus,
-      activePlan: demoUser.activePlan,
-    }),
-  );
-  router.push(
-    getPostAuthDestination({
-      isNewSignup: false,
-      subscriptionStatus: demoUser.subscriptionStatus,
-      returnTo,
-    }),
-  );
-}
 
 async function completeSignInFlow(
   dispatch: AppDispatch,
@@ -199,22 +172,10 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
     defaultValues: { email: "", password: "" },
   });
 
-  const signInWithDemo = async (demoUser = PRIMARY_DEMO_USER) => {
-    await completeDemoSignIn(dispatch, router, demoUser, returnTo);
-    toast.success(`Signed in as ${demoUser.name}.`);
-  };
-
   return (
     <form
       className="grid gap-5"
       onSubmit={handleSubmit(async (values) => {
-        const demoUser = matchDemoUser(values.email, values.password);
-        if (demoUser) {
-          await completeDemoSignIn(dispatch, router, demoUser, returnTo);
-          toast.success(`Signed in as ${demoUser.name}.`);
-          return;
-        }
-
         try {
           const data = await apiClient<{ accessToken: string; user: any }>("/auth/login", {
             method: "POST",
@@ -232,24 +193,6 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
       <Button className="w-full" disabled={isSubmitting}>
         {isSubmitting ? "Signing in..." : "Sign in"}
       </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        className="w-full"
-        disabled={isSubmitting}
-        onClick={() => {
-          setValue("email", PRIMARY_DEMO_USER.email);
-          setValue("password", PRIMARY_DEMO_USER.password);
-          void signInWithDemo();
-        }}
-      >
-        Sign in with demo user
-      </Button>
-      <p className="text-center text-xs text-white/38">
-        Demo: {PRIMARY_DEMO_USER.email} / {PRIMARY_DEMO_USER.password}
-        {" · "}
-        Expired: expired@bragi.local / {PRIMARY_DEMO_USER.password}
-      </p>
     </form>
   );
 }

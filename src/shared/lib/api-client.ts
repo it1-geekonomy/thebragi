@@ -6,7 +6,7 @@ export type ApiError = {
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
-const NETWORK_ERROR_MESSAGE = `Backend unreachable at ${API_URL}. Start the CRM API, or use Create account for local demo.`;
+const NETWORK_ERROR_MESSAGE = `Backend unreachable at ${API_URL}. Start the CRM API.`;
 
 function isNetworkFailure(error: unknown) {
   return error instanceof TypeError || (error instanceof DOMException && error.name === "AbortError");
