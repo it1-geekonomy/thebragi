@@ -9,6 +9,7 @@ export type GstinLookup = {
   legalName: string;
   pan: string;
   message: string;
+  address?: string;
 };
 
 export function emptyGstLookup(gstin: string, message: string): GstinLookup {

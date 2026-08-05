@@ -16,6 +16,7 @@ export async function fetchGstinValidation(gstin: string): Promise<GstinLookup> 
       valid: Boolean(data.valid),
       legalName: pickString(data.legalName),
       pan: pickString(data.pan),
+      address: pickString(data.address),
       message: pickString(data.message) || (data.valid ? "Verified against GSTN" : "GSTIN not found."),
     };
   } catch (error: any) {

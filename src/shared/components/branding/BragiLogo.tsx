@@ -8,6 +8,7 @@ export function BragiLogo() {
         alt="Bragi"
         width={400}
         height={94}
+        priority
         className="h-full w-full object-contain object-left"
       />
     </div>
