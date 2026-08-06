@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Script from "next/script";
 import { toast } from "sonner";
 import { getPlanBySlug } from "@/config/plans";
 import { ROUTES } from "@/config/routes";
@@ -327,6 +326,25 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
 
 
 
+      const loadRazorpay = () => new Promise((resolve) => {
+        if (typeof window !== "undefined" && (window as any).Razorpay) {
+          resolve(true);
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = "https://checkout.razorpay.com/v1/checkout.js";
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+      });
+
+      const scriptLoaded = await loadRazorpay();
+      if (!scriptLoaded) {
+        toast.error("Failed to load payment gateway. Please check your connection.");
+        setIsPaying(false);
+        return;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rzp = new (window as any).Razorpay(options);
       rzp.on("payment.failed", () => setIsPaying(false));
@@ -497,9 +515,6 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           className="order-1 lg:order-2"
         />
       </div>
-      {canPay && (
-        <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
-      )}
     </>
   );
 }
