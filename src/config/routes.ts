@@ -8,7 +8,6 @@ export type { BillingCycle, CheckoutParams };
 
 export const ROUTES = {
   home: "/",
-  features: "/features",
   pricing: "/pricing",
   contact: "/contact",
   checkout: (plan: string, opts?: { seats?: number; cycle?: BillingCycle }) =>
@@ -25,11 +24,6 @@ export const ROUTES = {
   account: {
     profile: "/account/profile",
     billing: "/account/billing",
-  },
-  products: {
-    sales: "/products/sales",
-    projects: "/products/projects",
-    full: "/products/full",
   },
   legal: {
     privacy: "/legal/privacy",

@@ -7,11 +7,9 @@ import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import { toast } from "sonner";
-import { getPlanBySlug } from "@/config/plans";
 import { ROUTES } from "@/config/routes";
 import { useAppDispatch } from "@/store/hooks";
 import { selectPlan, setMockSession, type AppDispatch } from "@/store";
-import { sendOtp, verifyOtp } from "@/features/auth/api";
 import { fetchAuthSessionDetails, getPostAuthDestination } from "@/features/auth/lib/post-auth-routing";
 
 import { createTrialWindow } from "@/features/auth/lib/trial-dates";
@@ -19,11 +17,11 @@ import { apiClient } from "@/shared/lib/api-client";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
 import { Select } from "@/shared/components/ui/Select";
-import { Tabs } from "@/shared/components/ui/Tabs";
-import { Alert } from "@/shared/components/ui/Alert";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { cn } from "@/shared/lib/cn";
+import { SignUpMultiStep } from "./SignUpMultiStep";
+import { useSubscriptionPlans, type DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
 
 const INDUSTRIES = [
   "Technology",
@@ -48,36 +46,14 @@ const passwordSchema = yup.object({
   password: yup.string().min(8, "Use at least 8 characters.").required("Password is required."),
 });
 
-const otpRequestSchema = yup.object({
-  email: yup.string().email("Enter a valid email.").required("Email is required."),
-});
-
-const otpVerifySchema = yup.object({
-  code: yup.string().required("Confirmation code is required."),
-});
-
 type SignUpValues = yup.InferType<typeof signUpSchema>;
 type PasswordValues = yup.InferType<typeof passwordSchema>;
-type OtpRequestValues = yup.InferType<typeof otpRequestSchema>;
-type OtpVerifyValues = yup.InferType<typeof otpVerifySchema>;
 type AuthMode = "signin" | "signup";
 
 function trialEndsLabel() {
   const date = new Date();
   date.setDate(date.getDate() + 14);
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function planTags(slug: string) {
-  if (slug === "bragi-sales") return ["Sales CRM"];
-  if (slug === "bragi-projects") return ["Project Mgmt"];
-  return ["Sales CRM", "Project Mgmt"];
-}
-
-function planSubtitle(slug: string) {
-  if (slug === "bragi-sales") return "Sales CRM only";
-  if (slug === "bragi-projects") return "Project Management only";
-  return "Sales CRM + Project Management";
 }
 
 function authHref(mode: AuthMode, plan?: string | null, returnTo?: string | null) {
@@ -90,12 +66,11 @@ function authHref(mode: AuthMode, plan?: string | null, returnTo?: string | null
 }
 
 
-async function completeSignInFlow(
+async function initAuthSession(
   dispatch: AppDispatch,
-  router: ReturnType<typeof useRouter>,
   data: { accessToken?: string; user?: any; requires_org_selection?: boolean; session_key?: string; orgs?: { id: string }[] },
   email: string,
-  returnTo: string,
+  isNewSignup: boolean = false,
 ) {
   await applyAuthSession(dispatch, data, email);
 
@@ -104,20 +79,14 @@ async function completeSignInFlow(
 
   dispatch(
     setMockSession({
-      isNewSignup: false,
+      isNewSignup,
       subscriptionStatus: sessionDetails.subscriptionStatus,
       activePlan: sessionDetails.activePlan,
       organizationId: sessionDetails.organizationId,
     }),
   );
 
-  router.push(
-    getPostAuthDestination({
-      isNewSignup: false,
-      subscriptionStatus: sessionDetails.subscriptionStatus,
-      returnTo,
-    }),
-  );
+  return sessionDetails;
 }
 
 async function applyAuthSession(
@@ -175,21 +144,39 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
   return (
     <form
       className="grid gap-5"
-      onSubmit={handleSubmit(async (values) => {
-        try {
-          const data = await apiClient<{ accessToken: string; user: any }>("/auth/login", {
-            method: "POST",
-            body: JSON.stringify({ email: values.email, password: values.password }),
-          });
-          await completeSignInFlow(dispatch, router, data as any, values.email, returnTo);
-          toast.success("Signed in successfully.");
-        } catch (err: any) {
-          toast.error(err.message || "Invalid email or password.");
-        }
-      })}
+        onSubmit={handleSubmit(async (values) => {
+          try {
+            const data = await apiClient<{ accessToken: string; user: any }>("/auth/login", {
+              method: "POST",
+              body: JSON.stringify({ email: values.email, password: values.password }),
+            });
+            const sessionDetails = await initAuthSession(dispatch, data as any, values.email, false);
+            
+            router.push(
+              getPostAuthDestination({
+                isNewSignup: false,
+                subscriptionStatus: sessionDetails.subscriptionStatus,
+                returnTo,
+              }),
+            );
+            toast.success("Signed in successfully.");
+          } catch (err: any) {
+            toast.error(err.message || "Invalid email or password.");
+          }
+        })}
     >
       <Input id="signin-email" label="Email" type="email" autoComplete="email" error={errors.email?.message} {...register("email")} />
       <Input id="signin-password" label="Password" type="password" autoComplete="current-password" error={errors.password?.message} {...register("password")} />
+      
+      <div className="flex items-center justify-end -mt-2">
+        <Link 
+          href={process.env.NEXT_PUBLIC_CRM_APP_URL ? `${process.env.NEXT_PUBLIC_CRM_APP_URL}/auth/forgot-password` : "http://localhost:3000/auth/forgot-password"} 
+          className="text-xs font-semibold text-[#a8dfb3] hover:text-white"
+        >
+          Forgot password?
+        </Link>
+      </div>
+
       <Button className="w-full" disabled={isSubmitting}>
         {isSubmitting ? "Signing in..." : "Sign in"}
       </Button>
@@ -197,69 +184,6 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
   );
 }
 
-function OtpMode({ returnTo }: { returnTo: string }) {
-  const dispatch = useAppDispatch();
-  const router = useRouter();
-  const [sent, setSent] = useState(false);
-  const [email, setEmail] = useState("");
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<OtpRequestValues>({ resolver: yupResolver(otpRequestSchema) });
-  const {
-    register: registerVerify,
-    handleSubmit: handleSubmitVerify,
-    formState: { errors: errorsVerify, isSubmitting: isSubmittingVerify },
-  } = useForm<OtpVerifyValues>({ resolver: yupResolver(otpVerifySchema) });
-
-  if (sent) {
-    return (
-      <form
-        className="grid gap-5"
-        onSubmit={handleSubmitVerify(async (values) => {
-          try {
-            const data = await verifyOtp(email, values.code);
-            await completeSignInFlow(dispatch, router, data as any, email, returnTo);
-            toast.success("Verified! Signed in successfully.");
-          } catch (err: any) {
-            toast.error(err.message || "Failed to verify OTP.");
-          }
-        })}
-      >
-        <Alert tone="success">A code was sent. Check your email.</Alert>
-        <Input id="otp-code" label="Confirmation code" type="text" error={errorsVerify.code?.message} {...registerVerify("code")} />
-        <Button className="w-full" disabled={isSubmittingVerify}>
-          {isSubmittingVerify ? "Verifying..." : "Verify"}
-        </Button>
-        <Button variant="ghost" type="button" onClick={() => setSent(false)}>
-          Change email
-        </Button>
-      </form>
-    );
-  }
-
-  return (
-    <form
-      className="grid gap-5"
-      onSubmit={handleSubmit(async (values) => {
-        try {
-          await sendOtp(values.email);
-          setEmail(values.email);
-          setSent(true);
-          toast.success("OTP sent to your email.");
-        } catch (err: any) {
-          toast.error(err.message || "Failed to send OTP.");
-        }
-      })}
-    >
-      <Input id="otp-email" label="Email" type="email" error={errors.email?.message} {...register("email")} />
-      <Button className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? "Sending..." : "Send OTP"}
-      </Button>
-    </form>
-  );
-}
 
 function SignInPanel({ returnTo, modeHref }: { returnTo: string; modeHref: (mode: AuthMode) => string }) {
   return (
@@ -285,183 +209,52 @@ function SignInPanel({ returnTo, modeHref }: { returnTo: string; modeHref: (mode
         <span className="h-px flex-1 bg-white/10" />
       </div>
 
-      <Tabs
-        tabs={[
-          { label: "Password", content: <PasswordMode returnTo={returnTo} /> },
-          { label: "OTP", content: <OtpMode returnTo={returnTo} /> },
-        ]}
-      />
+      <PasswordMode returnTo={returnTo} />
     </section>
   );
 }
 
-function SignUpPanel({
-  planSlug,
-  modeHref,
-  returnTo,
-}: {
-  planSlug: string | null;
-  modeHref: (mode: AuthMode) => string;
-  returnTo: string;
-}) {
-  const dispatch = useAppDispatch();
-  const router = useRouter();
-  const hasPlan = Boolean(planSlug);
-  const plan = hasPlan ? getPlanBySlug(planSlug!) : null;
-  const resumingCheckout = returnTo.startsWith("/checkout");
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<SignUpValues>({ resolver: yupResolver(signUpSchema) });
 
-  return (
-    <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6 sm:p-8">
-      <BragiLogo />
-      <h1 className="mt-6 text-3xl font-semibold text-white sm:text-4xl">Create your account</h1>
-      <p className="mt-3 text-sm text-white/58">
-        Already have one?{" "}
-        <Link className="font-semibold text-[#a8dfb3] hover:text-white" href={modeHref("signin")}>
-          Sign in
-        </Link>
-      </p>
-
-      <GoogleButton label="Continue with Google" />
-
-      <div className="my-6 flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.2em] text-white/28">
-        <span className="h-px flex-1 bg-white/10" />
-        or
-        <span className="h-px flex-1 bg-white/10" />
-      </div>
-
-      <form
-        className="grid gap-4"
-        onSubmit={handleSubmit(async (values) => {
-          if (!plan && !resumingCheckout) {
-            toast.message("Choose a plan to start your trial.");
-            router.push(ROUTES.pricing);
-            return;
-          }
-          // ponytail: local session only until register API exists
-          const { trialStartedAt, trialEndsAt } = createTrialWindow();
-          dispatch(
-            setMockSession({
-              isAuthenticated: true,
-              userName: values.fullName,
-              userEmail: values.email,
-              scope: "full",
-              activePlan: plan?.slug ?? null,
-              isNewSignup: true,
-              subscriptionStatus: "trialing",
-              trialStartedAt,
-              trialEndsAt,
-            }),
-          );
-          if (plan) dispatch(selectPlan(plan.slug));
-          toast.success(resumingCheckout ? "Account created. Continue to billing." : "Trial started. Welcome to Bragi.");
-          router.push(
-            getPostAuthDestination({
-              isNewSignup: true,
-              subscriptionStatus: "trialing",
-              returnTo,
-            }),
-          );
-        })}
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input id="fullName" label="Full name" autoComplete="name" error={errors.fullName?.message} {...register("fullName")} />
-          <Input id="email" label="Email" type="email" autoComplete="email" error={errors.email?.message} {...register("email")} />
-        </div>
-        <Input id="company" label="Company name" autoComplete="organization" error={errors.company?.message} {...register("company")} />
-        <label className="block text-sm text-white/72" htmlFor="industry">
-          <span className="mb-2 block font-medium">Industry</span>
-          <Select id="industry" className="w-full" defaultValue="" {...register("industry")}>
-            <option value="" disabled>
-              Select industry
-            </option>
-            {INDUSTRIES.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </Select>
-          {errors.industry?.message ? <span className="mt-2 block text-xs text-red-300">{errors.industry.message}</span> : null}
-        </label>
-        <Input id="password" label="Password" type="password" autoComplete="new-password" error={errors.password?.message} {...register("password")} />
-        {hasPlan || resumingCheckout ? (
-          <Button className="mt-2 w-full" disabled={isSubmitting}>
-            {isSubmitting
-              ? resumingCheckout
-                ? "Creating account..."
-                : "Starting trial..."
-              : resumingCheckout
-                ? "Create account & continue"
-                : "Start free trial"}
-          </Button>
-        ) : (
-          <Button className="mt-2 w-full" type="button" onClick={() => router.push(ROUTES.pricing)}>
-            Choose a plan to continue
-          </Button>
-        )}
-      </form>
-
-      <p className="mt-4 text-xs leading-5 text-white/38">
-        By continuing you agree to the{" "}
-        <Link className="text-white/58 hover:text-white" href={ROUTES.legal.terms}>
-          Terms
-        </Link>{" "}
-        and{" "}
-        <Link className="text-white/58 hover:text-white" href={ROUTES.legal.privacy}>
-          Privacy Policy
-        </Link>
-        .
-      </p>
-    </section>
-  );
-}
-
-function PlanSummaryAside({ planSlug, buyNow }: { planSlug?: string | null; buyNow?: boolean }) {
-  const plan = getPlanBySlug(planSlug ?? undefined);
+function PlanSummaryAside({ plan, buyNow }: { plan: DynamicPlan | null; buyNow?: boolean }) {
+  if (!plan) return null;
 
   return (
     <aside className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold text-white">{plan.name}</h2>
-          <p className="mt-1 text-sm text-white/52">{planSubtitle(plan.slug)}</p>
+          <p className="mt-1 text-sm text-white/52">{plan.description}</p>
         </div>
         <span className="shrink-0 rounded-full border border-[#7dc890]/30 bg-[#7dc890]/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#bce8c5]">
           {buyNow ? "Buy now" : "14-day trial"}
         </span>
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        {planTags(plan.slug).map((tag) => (
-          <span
-            key={tag}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#7dc890]/25 bg-[#7dc890]/10 px-3 py-1 text-xs font-semibold text-[#bce8c5]"
-          >
-            <span className="text-[#7dc890]">✓</span>
-            {tag}
-          </span>
-        ))}
-      </div>
-
       <dl className="mt-6 grid gap-3 text-sm">
         {buyNow ? (
-          <div className="flex items-center justify-between gap-3">
-            <dt className="text-white/48">Price</dt>
-            <dd className="font-medium text-white/84">{formatCurrency(plan.priceMonthly)}/user/mo</dd>
-          </div>
+          <>
+            <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
+              <dt className="text-white/48">Base Price</dt>
+              <dd className="font-medium text-white/84">{formatCurrency(plan.priceMonthly)}/mo</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-white/48">Additional Users</dt>
+              <dd className="font-medium text-white/84">+{formatCurrency(plan.perUserCostMonthly)}/mo per user</dd>
+            </div>
+          </>
         ) : (
           <>
             <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
               <dt className="text-white/48">Trial ends</dt>
               <dd className="font-medium text-white/84">{trialEndsLabel()}</dd>
             </div>
+            <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
+              <dt className="text-white/48">Then (Base)</dt>
+              <dd className="font-medium text-white/84">{formatCurrency(plan.priceMonthly)}/mo</dd>
+            </div>
             <div className="flex items-center justify-between gap-3">
-              <dt className="text-white/48">Then</dt>
-              <dd className="font-medium text-white/84">{formatCurrency(plan.priceMonthly)}/user/mo</dd>
+              <dt className="text-white/48">Additional Users</dt>
+              <dd className="font-medium text-white/84">+{formatCurrency(plan.perUserCostMonthly)}/mo per user</dd>
             </div>
           </>
         )}
@@ -512,13 +305,24 @@ function GoogleMark() {
 }
 
 function AuthFormContent() {
+  const dispatch = useAppDispatch();
   const searchParams = useSearchParams();
+  const { plans, loading } = useSubscriptionPlans();
   const mode: AuthMode = searchParams.get("mode") === "signup" ? "signup" : "signin";
-  const plan = searchParams.get("plan");
+  const planSlug = searchParams.get("plan");
+  const plan = plans.find((p) => p.slug === planSlug) || null;
   const returnTo = searchParams.get("returnTo") || ROUTES.dashboard;
   const buyNow = returnTo.startsWith("/checkout");
-  const modeHref = (next: AuthMode) => authHref(next, plan, searchParams.get("returnTo"));
+  const modeHref = (next: AuthMode) => authHref(next, planSlug, searchParams.get("returnTo"));
   const showPlan = Boolean(plan);
+
+  if (loading) {
+    return (
+      <main className="bg-black text-white min-h-screen flex items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent" />
+      </main>
+    );
+  }
 
   return (
     <div>
@@ -567,11 +371,16 @@ function AuthFormContent() {
 
       <div className={cn("grid gap-8", showPlan ? "lg:grid-cols-[1.15fr_0.85fr] lg:items-start" : "max-w-xl")}>
         {mode === "signup" ? (
-          <SignUpPanel planSlug={plan} modeHref={modeHref} returnTo={returnTo} />
+          <SignUpMultiStep 
+            plan={plan} 
+            modeHref={modeHref} 
+            returnTo={returnTo} 
+            initSessionFn={(data, email, isNewSignup) => initAuthSession(dispatch, data, email, isNewSignup)} 
+          />
         ) : (
           <SignInPanel returnTo={returnTo} modeHref={modeHref} />
         )}
-        {showPlan ? <PlanSummaryAside planSlug={plan} buyNow={buyNow} /> : null}
+        {showPlan ? <PlanSummaryAside plan={plan} buyNow={buyNow} /> : null}
       </div>
     </div>
   );

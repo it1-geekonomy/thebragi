@@ -3,18 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { getPlanBySlug } from "@/config/plans";
+import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
 import { ROUTES } from "@/config/routes";
 import { formatTrialDate } from "@/features/auth/lib/trial-dates";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { Button } from "@/shared/components/ui/Button";
 import { useAppSelector } from "@/store/hooks";
 
-function planTags(slug: string) {
-  if (slug === "bragi-sales") return ["Sales CRM"];
-  if (slug === "bragi-projects") return ["Project Mgmt"];
-  return ["Sales CRM", "Project Mgmt"];
-}
+
 
 export function BillingConfirmationClient() {
   const router = useRouter();
@@ -30,9 +26,19 @@ export function BillingConfirmationClient() {
     return null;
   }
 
-  const plan = getPlanBySlug(activePlan ?? undefined);
+  const { plans, loading } = useSubscriptionPlans();
+  const plan = plans.find((p) => p.slug === activePlan);
+
   const trialStart = trialStartedAt ? formatTrialDate(trialStartedAt) : "Today";
   const trialEnd = trialEndsAt ? formatTrialDate(trialEndsAt) : "—";
+
+  if (loading || !plan) {
+    return (
+      <main className="bg-black text-white min-h-screen flex items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent" />
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-2xl px-5 py-16 sm:px-8">
@@ -53,39 +59,22 @@ export function BillingConfirmationClient() {
           </span>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          {planTags(plan.slug).map((tag) => (
-            <span
-              key={tag}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#7dc890]/25 bg-[#7dc890]/10 px-3 py-1 text-xs font-semibold text-[#bce8c5]"
-            >
-              <span className="text-[#7dc890]">✓</span>
-              {tag}
-            </span>
-          ))}
-        </div>
-
-        <ul className="mt-6 grid gap-2 text-sm text-white/72">
-          {plan.modules.map((module) => (
-            <li key={module} className="flex items-start gap-2">
-              <span className="mt-0.5 text-[#7dc890]">✓</span>
-              <span>{module}</span>
-            </li>
-          ))}
-        </ul>
-
         <dl className="mt-6 grid gap-3 border-t border-white/8 pt-6 text-sm">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
             <dt className="text-white/48">Trial started</dt>
             <dd className="font-medium text-white/84">{trialStart}</dd>
           </div>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
             <dt className="text-white/48">Trial ends</dt>
             <dd className="font-medium text-white/84">{trialEnd}</dd>
           </div>
+          <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
+            <dt className="text-white/48">After trial (Base)</dt>
+            <dd className="font-medium text-white/84">{formatCurrency(plan.priceMonthly)}/mo</dd>
+          </div>
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-white/48">After trial</dt>
-            <dd className="font-medium text-white/84">{formatCurrency(plan.priceMonthly)}/user/mo</dd>
+            <dt className="text-white/48">Additional Users</dt>
+            <dd className="font-medium text-white/84">+{formatCurrency(plan.perUserCostMonthly)}/mo per user</dd>
           </div>
         </dl>
       </section>

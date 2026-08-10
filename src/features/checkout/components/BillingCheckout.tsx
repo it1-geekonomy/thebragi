@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getPlanBySlug } from "@/config/plans";
 import { ROUTES } from "@/config/routes";
 import { setMockSession } from "@/store";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -13,6 +12,7 @@ import { formatCurrency } from "@/shared/lib/format-currency";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
 import { Alert } from "@/shared/components/ui/Alert";
+import { razorpayApi } from "@/features/subscription/api";
 import {
   buildCheckoutPath,
   buildSignInForCheckout,
@@ -24,10 +24,12 @@ import {
   lookupGstin,
   resolveLocationFromAddress,
   type GstinLookup,
+  type TaxBreakdown,
 } from "@/features/checkout/lib/gst";
 import { saveVerifiedBilling } from "@/features/checkout/lib/billing-session";
 import { computeOrderTotals } from "@/features/checkout/lib/pricing";
 import { OrderSummaryPanel } from "@/features/checkout/components/OrderSummaryPanel";
+import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
 
 
 function syncCheckoutUrl(params: CheckoutParams) {
@@ -62,7 +64,9 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
 
   const [seats, setSeats] = useState(initial.seats);
   const [cycle, setCycle] = useState<BillingCycle>(initial.cycle);
-  const plan = getPlanBySlug(initial.plan);
+  
+  const { plans, loading } = useSubscriptionPlans();
+  const plan = plans.find(p => p.slug === initial.plan);
 
   const [legalName, setLegalName] = useState("");
   const [gstin, setGstin] = useState("");
@@ -80,7 +84,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   const gstRequestId = useRef(0);
   const addressRequestId = useRef(0);
 
-  const totals = computeOrderTotals(plan, seats, cycle, stateCode);
+  const totals = plan ? computeOrderTotals(plan, seats, cycle, stateCode) : { subtotal: 0, recurringSubtotal: 0, tax: { kind: "intra", totalTax: 0, cgst: 0, sgst: 0, igst: 0 } as TaxBreakdown, total: 0, basePrice: 0, perUser: 0, overageSeats: 0, setupFee: 0 };
   const gstVerified = Boolean(gstLookup?.valid && gstLookup.gstin === gstin.trim().toUpperCase());
   const billingComplete = Boolean(
     legalName.trim() &&
@@ -95,14 +99,14 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     gstVerified && billingComplete && !gstChecking && !locationResolving && organizationId && !isCreatingOrg;
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push(buildSignInForCheckout({ plan: plan.slug, seats, cycle }));
+    if (!isAuthenticated || !plan) {
+      router.push(buildSignInForCheckout({ plan: initial.plan, seats, cycle }));
     }
-  }, [isAuthenticated, router, plan.slug, seats, cycle]);
+  }, [isAuthenticated, router, plan, initial.plan, seats, cycle]);
 
   useEffect(() => {
-    syncCheckoutUrl({ plan: plan.slug, seats, cycle });
-  }, [plan.slug, seats, cycle]);
+    syncCheckoutUrl({ plan: initial.plan, seats, cycle });
+  }, [initial.plan, seats, cycle]);
 
   useEffect(() => {
     if (!isAuthenticated || organizationId) return;
@@ -215,7 +219,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     return () => window.clearTimeout(timer);
   }, [address]);
 
-  const handlePay = async () => {
+  const handlePay = async (mode: "trial" | "subscription") => {
     if (gstChecking) {
       toast.message("Still validating GSTIN — please wait.");
       return;
@@ -269,7 +273,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
       address: address.trim(),
       postalCode,
       country,
-      plan: plan.slug,
+      plan: plan!.slug,
       seats,
       cycle,
       verifiedAt: Date.now(),
@@ -279,17 +283,20 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     try {
       // ponytail: mock-signup orgs can't hit Razorpay — complete the funnel locally
       if (organizationId.startsWith("local-")) {
-        dispatch(setMockSession({ isAuthenticated: true, scope: "full", activePlan: plan.slug }));
+        dispatch(setMockSession({ isAuthenticated: true, scope: "full", activePlan: plan!.slug }));
         toast.success("Subscription activated.");
         router.push("/checkout/success");
         return;
       }
 
-      const order = await apiClient<{ id: string; amount: number }>("/razorpay/create-order", {
-        method: "POST",
-        body: JSON.stringify({
+      let order_id = "";
+      let subscription_id = "";
+      let amount = 0;
+
+      if (mode === "trial") {
+        const order = await razorpayApi.createTrialAuth({
           organizationId,
-          planId: plan.id,
+          planId: plan!.id,
           seats,
           billingCycle: cycle,
           billing: {
@@ -302,22 +309,45 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
             postalCode,
             country,
           },
-        }),
-      });
+        });
+        order_id = order.id;
+        amount = order.amount;
+      } else {
+        const sub = await razorpayApi.createAutoPaySubscription({
+          organizationId,
+          planId: plan!.id,
+          seats,
+          billingCycle: cycle,
+          billing: {
+            legalName: verified!.legalName,
+            gstin: verified!.gstin,
+            pan: finalPan,
+            address: address.trim(),
+            stateCode,
+            stateName,
+            postalCode,
+            country,
+          },
+        });
+        subscription_id = sub.subscription_id;
+        amount = totals.total * 100; // Razorpay expects amount in paise if required, though subscription_id doesn't need amount
+      }
 
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: order.amount,
+        amount: mode === "trial" ? amount : undefined,
         currency: "INR",
-        order_id: order.id,
+        order_id: mode === "trial" ? order_id : undefined,
+        subscription_id: mode === "subscription" ? subscription_id : undefined,
         name: "Bragi",
-        description: `${plan.name} · ${seats} seats · ${cycle}`,
+        description: mode === "trial" ? `Free Trial Authorization` : `${plan!.name} · ${seats} seats · ${cycle}`,
         handler: async (response: Record<string, string>) => {
-          await apiClient("/razorpay/verify", {
-            method: "POST",
-            body: JSON.stringify({ ...response, organizationId, planId: plan.id }),
-          });
-          dispatch(setMockSession({ isAuthenticated: true, scope: "full", activePlan: plan.slug }));
+          if (mode === "trial") {
+            await razorpayApi.verifyTrialAuth({ ...response, organizationId, planId: plan!.id });
+          } else {
+            await razorpayApi.verifySubscriptionPayment({ ...response, organizationId, planId: plan!.id });
+          }
+          dispatch(setMockSession({ isAuthenticated: true, scope: "full", activePlan: plan!.slug }));
           router.push("/checkout/success");
         },
         prefill: { email: userEmail ?? undefined, name: legalName },
@@ -355,11 +385,11 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     }
   };
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || loading || !plan) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-white">
-        <p>Redirecting to secure sign-in...</p>
-        <Link href={buildSignInForCheckout({ plan: plan.slug, seats, cycle })} className="text-[#a8dfb3] underline">
+        <p>{loading ? "Loading plans..." : "Redirecting to secure sign-in..."}</p>
+        <Link href={buildSignInForCheckout({ plan: initial.plan, seats, cycle })} className="text-[#a8dfb3] underline">
           Click here if you are not redirected automatically
         </Link>
       </div>
@@ -398,7 +428,6 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
               className="mt-8 grid gap-5"
               onSubmit={(event) => {
                 event.preventDefault();
-                void handlePay();
               }}
             >
               <Input
@@ -490,15 +519,26 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 <Alert tone="info">Add a 6-digit pincode in your billing address for tax calculation.</Alert>
               ) : null}
 
-              <Button className="w-full sm:w-auto sm:min-w-56" disabled={isPaying || !canPay} type="submit">
-                {gstChecking
-                  ? "Validating GSTIN…"
-                  : isPaying
-                    ? "Processing..."
-                    : !gstVerified
-                      ? "Verify GSTIN to continue"
-                      : `Pay ${formatCurrency(totals.total)} & activate`}
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Button className="flex-1" disabled={isPaying || !canPay} type="button" onClick={() => void handlePay("trial")}>
+                  {gstChecking
+                    ? "Validating GSTIN…"
+                    : isPaying
+                      ? "Processing..."
+                      : !gstVerified
+                        ? "Verify GSTIN to continue"
+                        : "Start 14-day Free Trial"}
+                </Button>
+                <Button className="flex-1" disabled={isPaying || !canPay} type="button" onClick={() => void handlePay("subscription")}>
+                  {gstChecking
+                    ? "Validating GSTIN…"
+                    : isPaying
+                      ? "Processing..."
+                      : !gstVerified
+                        ? "Verify GSTIN to continue"
+                        : `Pay ${formatCurrency(totals.total)} & activate`}
+                </Button>
+              </div>
             </form>
           )}
         </section>
@@ -510,6 +550,10 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           subtotal={totals.subtotal}
           tax={totals.tax}
           total={totals.total}
+          basePrice={totals.basePrice}
+          perUserPrice={totals.perUser}
+          overageSeats={totals.overageSeats}
+          setupFee={totals.setupFee}
           onSeatsChange={(next) => setSeats(Math.max(MIN_SEATS, next))}
           onCycleChange={setCycle}
           className="order-1 lg:order-2"

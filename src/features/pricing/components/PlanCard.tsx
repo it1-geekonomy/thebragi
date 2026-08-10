@@ -4,7 +4,7 @@ import { Badge } from "@/shared/components/ui/Badge";
 import { Card } from "@/shared/components/ui/Card";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { cn } from "@/shared/lib/cn";
-import type { Plan } from "@/config/plans";
+import type { DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
 
 export function PlanCard({
   plan,
@@ -13,14 +13,23 @@ export function PlanCard({
   billingCycle,
   onSelect,
 }: {
-  plan: Plan;
+  plan: DynamicPlan;
   highlighted?: boolean;
   selected?: boolean;
   billingCycle: "monthly" | "annual";
   onSelect?: () => void;
 }) {
-  const displayPrice =
-    billingCycle === "annual" ? Math.round(plan.priceMonthly * 0.8) : plan.priceMonthly;
+  const isAnnual = billingCycle === "annual";
+  const displayPrice = isAnnual && plan.priceAnnual
+    ? Math.round(plan.priceAnnual / 12)
+    : plan.priceMonthly;
+
+  const perUserPrice = isAnnual && plan.perUserCostAnnual
+    ? Math.round(plan.perUserCostAnnual / 12)
+    : plan.perUserCostMonthly || displayPrice;
+
+  const maxUsers = plan.maxUsers ?? 1;
+  const discount = plan.annualDiscountPercentage || 20;
 
   return (
     <Card
@@ -43,27 +52,26 @@ export function PlanCard({
         <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
         {plan.popular ? <Badge>{plan.badge ?? "Most popular"}</Badge> : null}
       </div>
-      <p className="mt-3 min-h-12 text-sm leading-6 text-white/58">{plan.description}</p>
-      <div className="mt-6 flex items-end gap-2">
-        <span className="text-4xl font-semibold text-white">{formatCurrency(displayPrice)}</span>
-        <span className="pb-1 text-sm text-white/46">/user/month</span>
+      <p className="mt-3 min-h-12 text-sm leading-6 text-white/58">
+        Includes up to {maxUsers} users.
+      </p>
+      <div className="mt-6 flex flex-col gap-2">
+        <div className="flex items-end gap-2">
+          <span className="text-4xl font-semibold text-white">{formatCurrency(displayPrice)}</span>
+          <span className="pb-1 text-sm text-white/46">/month</span>
+        </div>
+        {plan.setupFee > 0 ? (
+          <span className="inline-flex w-fit items-center rounded-md bg-[#7dc890]/10 px-2.5 py-1 text-xs font-medium text-[#7dc890]">
+            + {formatCurrency(plan.setupFee)} one-time setup fee
+          </span>
+        ) : null}
       </div>
-      {billingCycle === "annual" ? (
-        <p className="mt-2 text-xs font-semibold text-[#a8dfb3]">Billed annually — save 20%.</p>
+      <p className="mt-2 text-sm text-white/46">
+        + {formatCurrency(perUserPrice)}/mo for each additional user
+      </p>
+      {isAnnual && discount > 0 ? (
+        <p className="mt-2 text-xs font-semibold text-[#a8dfb3]">Billed annually — save {discount}%.</p>
       ) : null}
-      <ul className="mt-6 grid gap-3 text-sm">
-        {plan.features.map((feature) => (
-          <li
-            key={feature.label}
-            className={cn("flex gap-2", feature.included ? "text-white/68" : "text-white/28")}
-          >
-            <span className={feature.included ? "text-[#7dc890]" : "text-white/20"}>
-              {feature.included ? "✓" : "–"}
-            </span>
-            {feature.label}
-          </li>
-        ))}
-      </ul>
     </Card>
   );
 }
