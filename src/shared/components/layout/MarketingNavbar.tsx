@@ -10,16 +10,12 @@ import { setMobileNavOpen, clearSession } from "@/store";
 import { hasActiveSubscription } from "@/features/auth/lib/subscription";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { CTAButton } from "@/shared/components/marketing/CTAButton";
-import { DropdownMenu } from "@/shared/components/ui/DropdownMenu";
 import { cn } from "@/shared/lib/cn";
 
 type NavLink = { label: string; href: string };
 
 function getMobileLinks(): NavLink[] {
-  return marketingNav.flatMap((item) => {
-    if ("items" in item && item.items) return item.items;
-    return [{ label: item.label, href: item.href }];
-  });
+  return marketingNav as NavLink[];
 }
 
 export function MarketingNavbar() {
@@ -52,9 +48,7 @@ export function MarketingNavbar() {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8 lg:px-10">
         <Link href={ROUTES.home} aria-label="Bragi home"><BragiLogo /></Link>
         <nav className="hidden items-center gap-7 text-sm font-medium text-white/72 lg:flex">
-          {marketingNav.map((item) => item.items ? (
-            <DropdownMenu key={item.label} label={item.label} items={item.items.map((child) => ({ ...child, description: child.label.includes("Full") ? "Sales and projects together" : child.label.includes("Sales") ? "Pipeline and deal flow" : "Delivery and task flow" }))} />
-          ) : (
+          {marketingNav.map((item) => (
             <Link key={item.href} className={cn("transition hover:text-white", pathname === item.href && "text-white")} href={item.href}>{item.label}</Link>
           ))}
         </nav>
@@ -75,7 +69,7 @@ export function MarketingNavbar() {
                   </div>
                   <div className="mt-1 grid gap-0.5">
                     {canOpenApp ? (
-                      <Link href={ROUTES.continue} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Open workspace</Link>
+                      <a href={ROUTES.appWorkspace} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Open workspace</a>
                     ) : session.isAuthenticated ? (
                       <Link href={ROUTES.pricing} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Choose a plan</Link>
                     ) : null}
@@ -98,7 +92,9 @@ export function MarketingNavbar() {
           ) : (
             <>
               <Link className="text-sm font-semibold text-white/70 hover:text-white" href={ROUTES.signIn}>Sign in</Link>
-              <CTAButton href={ROUTES.pricing}>See plans</CTAButton>
+              {pathname !== ROUTES.pricing && (
+                <CTAButton href={ROUTES.pricing}>See plans</CTAButton>
+              )}
             </>
           )}
         </div>
@@ -120,7 +116,7 @@ export function MarketingNavbar() {
                   </div>
                 </div>
                 {canOpenApp ? (
-                  <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.continue} onClick={() => dispatch(setMobileNavOpen(false))}>Open workspace</Link>
+                  <a className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.appWorkspace}>Open workspace</a>
                 ) : session.isAuthenticated ? (
                   <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.pricing} onClick={() => dispatch(setMobileNavOpen(false))}>Choose a plan</Link>
                 ) : null}

@@ -8,7 +8,6 @@ export type { BillingCycle, CheckoutParams };
 
 export const ROUTES = {
   home: "/",
-  features: "/features",
   pricing: "/pricing",
   contact: "/contact",
   checkout: (plan: string, opts?: { seats?: number; cycle?: BillingCycle }) =>
@@ -16,20 +15,16 @@ export const ROUTES = {
   /** Canonical auth page — sign-in and sign-up share `/sign-in`. */
   signIn: "/sign-in",
   signUp: (plan?: string) => (plan ? `/sign-in?mode=signup&plan=${plan}` : "/sign-in?mode=signup"),
-  verify: "/verify",
-  dashboard: "/app/dashboard",
+  forgotPassword: "/forgot-password",
+  resetPassword: "/reset-password",
+  dashboard: "/dashboard",
   onboarding: "/app/onboarding",
   billingConfirmation: "/billing-confirmation",
-  continue: "/continue",
+  appWorkspace: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   subscriptionExpired: "/subscription-expired",
   account: {
     profile: "/account/profile",
     billing: "/account/billing",
-  },
-  products: {
-    sales: "/products/sales",
-    projects: "/products/projects",
-    full: "/products/full",
   },
   legal: {
     privacy: "/legal/privacy",

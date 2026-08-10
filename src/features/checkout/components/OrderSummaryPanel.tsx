@@ -20,6 +20,10 @@ export function OrderSummaryPanel({
   onSeatsChange,
   onCycleChange,
   className,
+  basePrice,
+  perUserPrice,
+  overageSeats,
+  setupFee,
 }: {
   plan: Plan;
   seats: number;
@@ -30,6 +34,10 @@ export function OrderSummaryPanel({
   onSeatsChange: (seats: number) => void;
   onCycleChange: (cycle: BillingCycle) => void;
   className?: string;
+  basePrice: number;
+  perUserPrice: number;
+  overageSeats: number;
+  setupFee: number;
 }) {
   return (
     <aside className={cn("rounded-lg border border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:sticky lg:top-24", className)}>
@@ -37,11 +45,11 @@ export function OrderSummaryPanel({
 
       <div className="mt-5 flex items-center justify-between gap-3 border-b border-white/8 pb-4">
         <div>
-          <p className="font-semibold text-white">{plan.name}</p>
-          <p className="mt-1 text-xs text-white/42">per user / month</p>
+          <p className="font-semibold text-white">{plan.name} Base Package</p>
+          <p className="mt-1 text-xs text-white/42">Up to {plan.maxUsers || "unlimited"} users</p>
         </div>
         <p className="font-semibold text-white">
-          {formatCurrency(cycle === "annual" ? Math.round(plan.priceMonthly * 0.8) : plan.priceMonthly)}
+          {formatCurrency(basePrice)} /mo
         </p>
       </div>
 
@@ -92,6 +100,18 @@ export function OrderSummaryPanel({
       </div>
 
       <dl className="mt-6 grid gap-3 border-t border-white/8 pt-5 text-sm">
+        {overageSeats > 0 ? (
+          <div className="flex justify-between gap-3 text-white/60">
+            <dt>Additional seats ({overageSeats} × {formatCurrency(perUserPrice)})</dt>
+            <dd>{formatCurrency(overageSeats * perUserPrice)}</dd>
+          </div>
+        ) : null}
+        {setupFee > 0 ? (
+          <div className="flex justify-between gap-3 text-white/60">
+            <dt>One-time setup fee</dt>
+            <dd>{formatCurrency(setupFee)}</dd>
+          </div>
+        ) : null}
         <div className="flex justify-between gap-3">
           <dt className="text-white/48">Subtotal</dt>
           <dd className="text-white/84">{formatCurrency(subtotal)}</dd>

@@ -8,6 +8,8 @@ const AuthForm = dynamic(
   },
 );
 
+import { AuthRedirector } from "@/features/auth/components/AuthRedirector";
+
 export const metadata: Metadata = {
   title: "Sign in",
   description: "Sign in to Bragi or create an account to start a 14-day free trial.",
@@ -16,6 +18,7 @@ export const metadata: Metadata = {
 export default function SignInPage() {
   return (
     <main className="mx-auto max-w-6xl px-5 py-12 sm:px-8 lg:py-16">
+      <AuthRedirector />
       <AuthForm />
     </main>
   );

@@ -13,6 +13,7 @@ type SessionState = {
   subscriptionStatus: SubscriptionStatus | null;
   trialStartedAt: string | null;
   trialEndsAt: string | null;
+  role: string | null;
 };
 
 type CheckoutState = {
@@ -34,6 +35,7 @@ const initialSessionState: SessionState = {
   subscriptionStatus: null,
   trialStartedAt: null,
   trialEndsAt: null,
+  role: null,
 };
 
 const initialCheckoutState: CheckoutState = {
