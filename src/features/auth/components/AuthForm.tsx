@@ -22,6 +22,7 @@ import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { cn } from "@/shared/lib/cn";
 import { SignUpMultiStep } from "./SignUpMultiStep";
 import { useSubscriptionPlans, type DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
+import { BackButton } from "@/shared/components/ui/BackButton";
 
 const INDUSTRIES = [
   "Technology",
@@ -156,6 +157,7 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
               getPostAuthDestination({
                 isNewSignup: false,
                 subscriptionStatus: sessionDetails.subscriptionStatus,
+                activePlan: sessionDetails.activePlan,
                 returnTo,
               }),
             );
@@ -170,7 +172,7 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
       
       <div className="flex items-center justify-end -mt-2">
         <Link 
-          href={process.env.NEXT_PUBLIC_CRM_APP_URL ? `${process.env.NEXT_PUBLIC_CRM_APP_URL}/auth/forgot-password` : "http://localhost:3000/auth/forgot-password"} 
+          href={ROUTES.forgotPassword} 
           className="text-xs font-semibold text-[#a8dfb3] hover:text-white"
         >
           Forgot password?
@@ -326,6 +328,9 @@ function AuthFormContent() {
 
   return (
     <div>
+      <div className="mb-6">
+        <BackButton />
+      </div>
       <div className="mb-8">
         <div className="inline-flex items-center gap-3">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm font-semibold text-black">2</span>
@@ -340,13 +345,7 @@ function AuthFormContent() {
                 : "Create your account, then pick a plan when you’re ready to start a trial."
               : "Use your Bragi account to open the app, or create one after choosing a plan."}
         </p>
-        {buyNow ? (
-          <p className="mt-2 text-xs text-white/38">
-            <Link className="font-semibold text-[#a8dfb3] hover:text-white" href={ROUTES.pricing}>
-              ← Back to plans
-            </Link>
-          </p>
-        ) : null}
+        {/* Removed duplicate back link */}
         <div className="mt-5 inline-flex rounded-full border border-white/12 bg-white/[0.04] p-1">
           <Link
             href={modeHref("signin")}

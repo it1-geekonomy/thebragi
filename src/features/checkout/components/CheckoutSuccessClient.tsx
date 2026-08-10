@@ -6,20 +6,27 @@ import { useRouter } from "next/navigation";
 import { ROUTES } from "@/config/routes";
 import { clearVerifiedBilling, readVerifiedBilling } from "@/features/checkout/lib/billing-session";
 import { Button } from "@/shared/components/ui/Button";
+import { useAppSelector } from "@/store/hooks";
 
 export function CheckoutSuccessClient({ crmLoginUrl }: { crmLoginUrl: string }) {
   const router = useRouter();
   const [billing, setBilling] = useState(readVerifiedBilling);
   const [redirecting, setRedirecting] = useState(false);
 
+  const isAuthenticated = useAppSelector((state) => state.session.isAuthenticated);
+
   useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace(ROUTES.signIn);
+      return;
+    }
     const verified = readVerifiedBilling();
     if (!verified?.gstin) {
       router.replace(ROUTES.pricing);
       return;
     }
     setBilling(verified);
-  }, [router]);
+  }, [isAuthenticated, router]);
 
   const goToApp = () => {
     setRedirecting(true);

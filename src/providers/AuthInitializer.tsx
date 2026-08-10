@@ -22,6 +22,9 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
             subscriptionStatus: details.subscriptionStatus,
             activePlan: details.activePlan,
             organizationId: details.organizationId,
+            userName: details.userName,
+            userEmail: details.userEmail,
+            role: details.role,
           })
         );
       } catch (err) {

@@ -44,13 +44,19 @@ export function PlanCard({
         }
       }}
       className={cn(
-        "scroll-mt-28 cursor-pointer p-6 transition duration-200",
-        (highlighted || selected) && "border-[#7dc890]/60 shadow-[0_0_0_1px_rgba(125,200,144,0.22),0_24px_80px_rgba(95,153,101,0.14)]",
+        "scroll-mt-28 cursor-pointer p-6 transition duration-200 border-2",
+        (highlighted || selected) 
+          ? "border-[#7dc890] bg-[#7dc890]/[0.03] shadow-[0_0_0_1px_#7dc890,0_24px_80px_rgba(125,200,144,0.15)]"
+          : "border-transparent",
       )}
     >
       <div className="flex min-h-8 items-center justify-between gap-3">
         <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
-        {plan.popular ? <Badge>{plan.badge ?? "Most popular"}</Badge> : null}
+        {(highlighted || selected) ? (
+          <Badge className="bg-[#7dc890] text-black border-[#7dc890]">Selected</Badge>
+        ) : plan.popular ? (
+          <Badge>{plan.badge ?? "Most popular"}</Badge>
+        ) : null}
       </div>
       <p className="mt-3 min-h-12 text-sm leading-6 text-white/58">
         Includes up to {maxUsers} users.

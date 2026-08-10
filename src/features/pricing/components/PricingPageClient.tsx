@@ -13,6 +13,7 @@ import { Toggle } from "@/shared/components/ui/Toggle";
 import { SectionHeading } from "@/shared/components/marketing/SectionHeading";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
+import { BackButton } from "@/shared/components/ui/BackButton";
 
 type BillingCycle = "monthly" | "annual";
 
@@ -59,8 +60,11 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
 
   return (
     <main className="bg-black text-white">
-      <section className="px-5 py-20 sm:px-8 lg:px-10">
+      <section className="px-5 py-12 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-7xl">
+          <div className="mb-12">
+            <BackButton />
+          </div>
           <div className="inline-flex items-center gap-3">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm font-semibold text-black">
               1
@@ -71,15 +75,15 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
           <div className="mt-12 flex flex-col items-center text-center">
             <BragiLogo />
             <h1 className="mt-8 max-w-3xl text-4xl font-semibold leading-tight sm:text-5xl">
-              {subscribed ? "Your Bragi workspace is active" : "Run sales and delivery in one place"}
+              {subscribed ? "Your Bragi workspace is active" : session.isAuthenticated ? "Choose a plan to continue" : "Run sales and delivery in one place"}
             </h1>
             <p className="mt-4 max-w-xl text-base leading-7 text-white/58">
               {subscribed
                 ? `You're on ${currentPlan?.name ?? "an active plan"}. Open the app to continue working — no need to pick a plan again.`
-                : "Start free for 14 days. No card needed. Cancel any time."}
+                : session.isAuthenticated ? "Pick a subscription plan to activate your workspace." : "Start free for 14 days. No card needed. Cancel any time."}
             </p>
             {subscribed ? (
-              <Button className="mt-8" onClick={() => router.push(ROUTES.continue)}>
+              <Button className="mt-8" onClick={() => router.push(ROUTES.dashboard)}>
                 Open workspace
               </Button>
             ) : (
@@ -135,18 +139,29 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
 
         {!subscribed && selectedPlan ? (
           <div className="mx-auto mt-10 flex max-w-xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
-            <Link
-              className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-5 py-3 text-sm font-semibold text-white hover:bg-[#6bad72] sm:w-auto sm:min-w-52"
-              href={ROUTES.signUp(selectedPlan.slug)}
-            >
-              Start 14-day free trial
-            </Link>
-            <Link
-              className="inline-flex w-full items-center justify-center rounded-md border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/8 sm:w-auto sm:min-w-36"
-              href={ROUTES.checkout(selectedPlan.slug, { cycle: billingCycle })}
-            >
-              Buy now
-            </Link>
+            {!session.isAuthenticated ? (
+              <>
+                <Link
+                  className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-5 py-3 text-sm font-semibold text-white hover:bg-[#6bad72] sm:w-auto sm:min-w-52"
+                  href={ROUTES.signUp(selectedPlan.slug)}
+                >
+                  Start 14-day free trial
+                </Link>
+                <Link
+                  className="inline-flex w-full items-center justify-center rounded-md border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/8 sm:w-auto sm:min-w-36"
+                  href={ROUTES.checkout(selectedPlan.slug, { cycle: billingCycle })}
+                >
+                  Buy now
+                </Link>
+              </>
+            ) : (
+              <Link
+                className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-5 py-3 text-sm font-semibold text-white hover:bg-[#6bad72] sm:w-auto sm:min-w-52"
+                href={ROUTES.checkout(selectedPlan.slug, { cycle: billingCycle })}
+              >
+                Upgrade now
+              </Link>
+            )}
           </div>
         ) : null}
         <p className="mx-auto mt-5 max-w-7xl text-center text-xs leading-5 text-white/38">

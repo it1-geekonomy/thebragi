@@ -69,7 +69,7 @@ export function MarketingNavbar() {
                   </div>
                   <div className="mt-1 grid gap-0.5">
                     {canOpenApp ? (
-                      <Link href={ROUTES.continue} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Open workspace</Link>
+                      <a href={ROUTES.appWorkspace} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Open workspace</a>
                     ) : session.isAuthenticated ? (
                       <Link href={ROUTES.pricing} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Choose a plan</Link>
                     ) : null}
@@ -92,7 +92,9 @@ export function MarketingNavbar() {
           ) : (
             <>
               <Link className="text-sm font-semibold text-white/70 hover:text-white" href={ROUTES.signIn}>Sign in</Link>
-              <CTAButton href={ROUTES.pricing}>See plans</CTAButton>
+              {pathname !== ROUTES.pricing && (
+                <CTAButton href={ROUTES.pricing}>See plans</CTAButton>
+              )}
             </>
           )}
         </div>
@@ -114,7 +116,7 @@ export function MarketingNavbar() {
                   </div>
                 </div>
                 {canOpenApp ? (
-                  <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.continue} onClick={() => dispatch(setMobileNavOpen(false))}>Open workspace</Link>
+                  <a className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.appWorkspace}>Open workspace</a>
                 ) : session.isAuthenticated ? (
                   <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.pricing} onClick={() => dispatch(setMobileNavOpen(false))}>Choose a plan</Link>
                 ) : null}

@@ -7,12 +7,18 @@ import { Card } from "@/shared/components/ui/Card";
 import { Badge } from "@/shared/components/ui/Badge";
 import { Button } from "@/shared/components/ui/Button";
 import { ROUTES } from "@/config/routes";
-import { subscriptionApi, SubscriptionStatus } from "@/features/subscription/api";
+import {
+  subscriptionApi,
+  SubscriptionStatus,
+} from "@/features/subscription/api";
 import { useAppSelector } from "@/store/hooks";
+import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
+import { formatCurrency } from "@/shared/lib/format-currency";
 
 export function BillingPageClient() {
   const { organizationId } = useAppSelector((state) => state.session);
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
+  const { plans, loading: plansLoading } = useSubscriptionPlans();
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
 
@@ -21,7 +27,8 @@ export function BillingPageClient() {
       setLoading(false);
       return;
     }
-    subscriptionApi.getSubscriptionStatus(organizationId)
+    subscriptionApi
+      .getSubscriptionStatus(organizationId)
       .then(setStatus)
       .catch((err) => toast.error("Failed to load subscription status"))
       .finally(() => setLoading(false));
@@ -32,8 +39,13 @@ export function BillingPageClient() {
   }, [organizationId]);
 
   const handleCancel = async () => {
-    if (!confirm("Are you sure you want to cancel your auto-pay subscription? This action cannot be undone.")) return;
-    
+    if (
+      !confirm(
+        "Are you sure you want to cancel your auto-pay subscription? This action cannot be undone.",
+      )
+    )
+      return;
+
     setCancelling(true);
     try {
       await subscriptionApi.cancelAutoPay();
@@ -46,7 +58,7 @@ export function BillingPageClient() {
     }
   };
 
-  if (loading) {
+  if (loading || plansLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent" />
@@ -54,49 +66,124 @@ export function BillingPageClient() {
     );
   }
 
-  const badgeColor = status?.status === "ACTIVE" ? "bg-[#7dc890] text-black" : 
-                     status?.status === "TRIAL" ? "bg-blue-300 text-black" : 
-                     status?.status === "PAST_DUE" ? "bg-red-400 text-white" : "";
+  const badgeColor =
+    status?.status?.toUpperCase() === "ACTIVE"
+      ? "bg-[#7dc890] text-black"
+      : status?.status?.toUpperCase() === "TRIAL"
+        ? "bg-blue-300 text-black"
+        : status?.status?.toUpperCase() === "PAST_DUE"
+          ? "bg-red-400 text-white"
+          : "";
+
+  const dynamicPlan = plans.find(
+    (p) =>
+      p.slug === status?.plan?.toLowerCase() ||
+      p.name.toLowerCase() === status?.plan?.toLowerCase(),
+  );
 
   return (
     <main>
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">Account</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">
+            Account
+          </p>
           <h1 className="mt-3 text-3xl font-semibold text-white">Billing</h1>
-          <p className="mt-2 text-sm text-white/52">Manage your subscription and billing details.</p>
+          <p className="mt-2 text-sm text-white/52">
+            Manage your subscription and billing details.
+          </p>
         </div>
-        <Link className="text-sm font-semibold text-[#a8dfb3] hover:text-white" href={ROUTES.pricing}>Compare plans</Link>
+        <Link
+          className="text-sm font-semibold text-[#a8dfb3] hover:text-white"
+          href={ROUTES.pricing}
+        >
+          Compare plans
+        </Link>
       </div>
       <div className="mt-6 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
         <Card className="p-6">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-xl font-semibold">Current plan</h2>
             {status?.status ? (
-              <span className={`px-2 py-1 text-xs font-semibold rounded-md ${badgeColor}`}>{status.status}</span>
+              <span
+                className={`px-2 py-1 text-xs font-semibold rounded-md ${badgeColor}`}
+              >
+                {status.status}
+              </span>
             ) : (
               <Badge>No Active Plan</Badge>
             )}
           </div>
-          <p className="mt-4 text-3xl font-semibold text-white">{status?.plan || "No Plan"}</p>
-          
-          {status?.status === "TRIAL" && (
+          <p className="mt-4 text-3xl font-semibold text-white">
+            {dynamicPlan?.name || status?.plan || "No Plan"}
+          </p>
+
+          {dynamicPlan && (
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <div className="grid gap-2 text-sm text-white/70">
+                <div className="flex justify-between">
+                  <span>Base package:</span>
+                  <span className="font-medium text-white">
+                    {formatCurrency(dynamicPlan.priceMonthly)}/mo
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Included seats:</span>
+                  <span className="font-medium text-white">
+                    Up to{" "}
+                    {dynamicPlan.maxUsers > 0
+                      ? dynamicPlan.maxUsers
+                      : "Unlimited"}{" "}
+                    users
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Additional seats:</span>
+                  <span className="font-medium text-white">
+                    {formatCurrency(dynamicPlan.perUserCostMonthly)}/user/mo
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {status?.status?.toUpperCase() === "TRIAL" && (
             <p className="mt-2 text-sm text-white/52">
-              Your trial ends on {status.endDate ? new Date(status.endDate).toLocaleDateString() : "N/A"}. ({status.daysRemaining} days remaining)
+              Your trial ends on{" "}
+              {status.endDate
+                ? new Date(status.endDate).toLocaleDateString()
+                : "N/A"}
+              . ({status.daysRemaining} days remaining)
             </p>
           )}
 
-          {status?.status === "ACTIVE" && (
+          {status?.status?.toUpperCase() === "ACTIVE" && (
             <p className="mt-2 text-sm text-white/52">
-              Next renewal: {status.endDate ? new Date(status.endDate).toLocaleDateString() : "N/A"}.
-              {status.autoPayEnabled ? " Auto-pay is active." : " Auto-pay is inactive."}
+              Next renewal:{" "}
+              {status.endDate
+                ? new Date(status.endDate).toLocaleDateString()
+                : "N/A"}
+              .
+              {status.autoPayEnabled
+                ? " Auto-pay is active."
+                : " Auto-pay is inactive."}
             </p>
           )}
 
           <div className="mt-6 flex flex-wrap gap-3">
-            <Button type="button" onClick={() => window.location.href = ROUTES.pricing}>Change Plan</Button>
+            <Button
+              type="button"
+              onClick={() => (window.location.href = ROUTES.pricing)}
+            >
+              Change Plan
+            </Button>
             {status?.autoPayEnabled && (
-              <Button type="button" variant="secondary" onClick={handleCancel} disabled={cancelling}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleCancel}
+                disabled={cancelling}
+              >
                 {cancelling ? "Cancelling..." : "Cancel Auto-Pay"}
               </Button>
             )}
