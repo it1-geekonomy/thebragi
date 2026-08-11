@@ -76,8 +76,8 @@ export function ResetPasswordForm() {
               });
               toast.success("Password has been reset successfully.");
               router.push(ROUTES.signIn);
-            } catch (err: any) {
-              toast.error(err.message || "Failed to reset password.");
+            } catch (err: unknown) {
+              toast.error(err instanceof Error ? err.message : "Failed to reset password.");
             }
           })}
         >

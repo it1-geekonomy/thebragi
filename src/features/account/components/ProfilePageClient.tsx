@@ -6,135 +6,124 @@ import { Input } from "@/shared/components/ui/Input";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
 import { useAppSelector } from "@/store/hooks";
-import {
-  subscriptionApi,
-  SubscriptionStatus,
-} from "@/features/subscription/api";
-import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
+import { subscriptionApi } from "@/features/subscription/api";
+import { paymentApi } from "@/features/subscription/services/paymentApi";
+import { apiClient } from "@/shared/lib/api-client";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/config/routes";
 
+type ProfileView = {
+  name: string;
+  email: string;
+  company: string;
+  role: string;
+  plan: string;
+  subscribed: boolean;
+};
+
 export function ProfilePageClient() {
   const { session } = useAppSelector((state) => state);
-  const [status, setStatus] = useState<SubscriptionStatus | null>(null);
-  const { plans } = useSubscriptionPlans();
   const router = useRouter();
+  const [profile, setProfile] = useState<ProfileView | null>(null);
 
   useEffect(() => {
-    if (session.organizationId) {
-      subscriptionApi
-        .getSubscriptionStatus(session.organizationId)
-        .then(setStatus)
-        .catch(() => {});
+    let cancelled = false;
+
+    async function load() {
+      if (session.organizationId) {
+        const [org, sub] = await Promise.all([
+          apiClient<{ name?: string }>(`/organizations/${session.organizationId}`).catch(() => null),
+          subscriptionApi.getSubscriptionStatus(session.organizationId).catch(() => null),
+        ]);
+        if (cancelled) return;
+        const subscribed =
+          sub?.status?.toUpperCase() === "ACTIVE" || sub?.status?.toUpperCase() === "TRIAL";
+        setProfile({
+          name: session.userName || "",
+          email: session.userEmail || "",
+          company: org?.name || "",
+          role: session.role?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "",
+          plan: sub?.plan || "",
+          subscribed,
+        });
+        return;
+      }
+
+      if (!session.userEmail) return;
+      const pending = await paymentApi.getPendingSignup(session.userEmail).catch(() => null);
+      if (cancelled) return;
+      setProfile({
+        name: pending?.name || session.userName || "",
+        email: pending?.email || session.userEmail || "",
+        company: pending?.company || "",
+        role: "",
+        plan: pending?.planName || "",
+        subscribed: false,
+      });
     }
-  }, [session.organizationId]);
 
-  const dynamicPlan = plans.find(
-    (p) =>
-      p.slug === status?.plan?.toLowerCase() ||
-      p.name.toLowerCase() === status?.plan?.toLowerCase(),
-  );
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [session.organizationId, session.userEmail, session.userName, session.role]);
 
-  const displayRole = session.role
-    ? session.role
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase())
-    : "Workspace owner";
+  if (!profile) {
+    return (
+      <main className="flex min-h-[40vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent" />
+      </main>
+    );
+  }
 
   const details = [
-    ["Role", displayRole],
-    ["Plan", dynamicPlan?.name || status?.plan || "No Plan"],
+    ...(profile.role ? ([["Role", profile.role]] as const) : []),
+    ["Plan", profile.plan || "None"],
   ];
-
-  const hasActivePlan =
-    status?.status?.toUpperCase() === "ACTIVE" ||
-    status?.status?.toUpperCase() === "TRIAL";
 
   return (
     <main>
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">
-            Account
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">Account</p>
           <h1 className="mt-3 text-3xl font-semibold text-white">Profile</h1>
-          <p className="mt-2 text-sm text-white/52">
-            Manage your personal and company details.
-          </p>
+          <p className="mt-2 text-sm text-white/52">Manage your personal and company details.</p>
         </div>
-        <Badge>Owner</Badge>
+        {profile.role ? <Badge>{profile.role}</Badge> : null}
       </div>
       <div className="mt-6 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
         <Card className="grid gap-5 p-6">
-          <h2 className="text-xl font-semibold text-white">
-            Personal and company details
-          </h2>
+          <h2 className="text-xl font-semibold text-white">Personal and company details</h2>
           <div className="grid gap-5 sm:grid-cols-2">
-            <Input
-              id="name"
-              label="Name"
-              defaultValue={session.userName || "User"}
-              readOnly
-              className="opacity-70 pointer-events-none"
-            />
-            <Input
-              id="email"
-              label="Email"
-              type="email"
-              defaultValue={session.userEmail || "user@company.com"}
-              readOnly
-              className="opacity-70 pointer-events-none"
-            />
+            <Input id="name" label="Name" value={profile.name} readOnly className="opacity-70 pointer-events-none" />
+            <Input id="email" label="Email" type="email" value={profile.email} readOnly className="opacity-70 pointer-events-none" />
             <div className="sm:col-span-2">
-              <Input
-                id="company"
-                label="Company"
-                defaultValue="Preview company"
-                readOnly
-                className="opacity-70 pointer-events-none"
-              />
+              <Input id="company" label="Company" value={profile.company} readOnly className="opacity-70 pointer-events-none" />
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap gap-3">
-              <Button
-                type="button"
-                onClick={() => {
-                  if (hasActivePlan) {
-                    router.push(ROUTES.dashboard);
-                  } else {
-                    router.push(ROUTES.pricing);
-                  }
-                }}
-              >
-                {hasActivePlan
-                  ? "Edit in Workspace"
-                  : "Upgrade to edit profile"}
-              </Button>
-            </div>
-            {!hasActivePlan && (
-              <p className="text-xs text-white/52">
-                You need an active subscription to manage organization details.
-              </p>
-            )}
+            <Button type="button" onClick={() => router.push(profile.subscribed ? ROUTES.dashboard : ROUTES.pricing)}>
+              {profile.subscribed ? "Edit in Workspace" : "Choose a plan"}
+            </Button>
+            {!profile.subscribed ? (
+              <p className="text-xs text-white/52">You need an active subscription to manage organization details.</p>
+            ) : null}
           </div>
         </Card>
-        <div className="grid gap-5">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-white">Account status</h2>
-            <div className="mt-5 grid gap-3">
-              {details.map(([label, value]) => (
-                <div
-                  key={label}
-                  className="flex items-center justify-between rounded-md border border-white/10 bg-black/35 px-3 py-2 text-sm"
-                >
-                  <span className="text-white/44">{label}</span>
-                  <span className="font-semibold text-white/78">{value}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
+        <Card className="p-6">
+          <h2 className="text-xl font-semibold text-white">Account status</h2>
+          <div className="mt-5 grid gap-3">
+            {details.map(([label, value]) => (
+              <div
+                key={label}
+                className="flex items-center justify-between rounded-md border border-white/10 bg-black/35 px-3 py-2 text-sm"
+              >
+                <span className="text-white/44">{label}</span>
+                <span className="font-semibold text-white/78">{value}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     </main>
   );

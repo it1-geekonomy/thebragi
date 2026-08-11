@@ -7,6 +7,7 @@ import { marketingNav } from "@/config/nav";
 import { ROUTES } from "@/config/routes";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setMobileNavOpen, clearSession } from "@/store";
+import { clearSignupDraft } from "@/features/checkout/lib/billing-session";
 import { hasActiveSubscription } from "@/features/auth/lib/subscription";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { CTAButton } from "@/shared/components/marketing/CTAButton";
@@ -41,7 +42,7 @@ export function MarketingNavbar() {
   const initials = session.userName
     ? session.userName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "?";
-  const canOpenApp = session.isAuthenticated && hasActiveSubscription(session.subscriptionStatus);
+  const canOpenApp = session.isAuthenticated && hasActiveSubscription(session.subscriptionStatus, session.activePlan);
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-black/82 backdrop-blur-xl">
@@ -79,6 +80,7 @@ export function MarketingNavbar() {
                         dispatch(clearSession());
                         setProfileOpen(false);
                         localStorage.removeItem("accessToken");
+                        clearSignupDraft();
                         router.push(ROUTES.home);
                       }}
                       className="w-full rounded-md px-3 py-2.5 text-left text-sm text-white/38 transition hover:bg-white/8 hover:text-white/72"
@@ -91,7 +93,9 @@ export function MarketingNavbar() {
             </div>
           ) : (
             <>
-              <Link className="text-sm font-semibold text-white/70 hover:text-white" href={ROUTES.signIn}>Sign in</Link>
+              {pathname !== ROUTES.signIn && (
+                <Link className="text-sm font-semibold text-white/70 hover:text-white" href={ROUTES.signIn}>Sign in</Link>
+              )}
               {pathname !== ROUTES.pricing && (
                 <CTAButton href={ROUTES.pricing}>See plans</CTAButton>
               )}
@@ -121,11 +125,13 @@ export function MarketingNavbar() {
                   <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.pricing} onClick={() => dispatch(setMobileNavOpen(false))}>Choose a plan</Link>
                 ) : null}
                 <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.account.profile} onClick={() => dispatch(setMobileNavOpen(false))}>Account settings</Link>
-                <button className="w-full rounded-md px-3 py-2 text-left text-white/44 hover:bg-white/8 hover:text-white/72" onClick={() => { dispatch(clearSession()); dispatch(setMobileNavOpen(false)); localStorage.removeItem("accessToken"); }}>Sign out</button>
+                <button className="w-full rounded-md px-3 py-2 text-left text-white/44 hover:bg-white/8 hover:text-white/72" onClick={() => { dispatch(clearSession()); dispatch(setMobileNavOpen(false)); localStorage.removeItem("accessToken"); clearSignupDraft(); }}>Sign out</button>
               </>
             ) : (
               <>
-                <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.signIn} onClick={() => dispatch(setMobileNavOpen(false))}>Sign in</Link>
+                {pathname !== ROUTES.signIn && (
+                  <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.signIn} onClick={() => dispatch(setMobileNavOpen(false))}>Sign in</Link>
+                )}
                 <Link className="rounded-md bg-[#5f9965] px-3 py-2 font-semibold text-white" href={ROUTES.pricing} onClick={() => dispatch(setMobileNavOpen(false))}>See plans</Link>
               </>
             )}

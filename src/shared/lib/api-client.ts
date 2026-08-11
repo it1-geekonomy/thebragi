@@ -4,12 +4,35 @@ export type ApiError = {
   status: number;
 };
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+export function getApiUrl() {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+      return `http://${host}:8080`;
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+}
 
-const NETWORK_ERROR_MESSAGE = `Backend unreachable at ${API_URL}. Start the CRM API.`;
+export const API_URL = getApiUrl();
 
 function isNetworkFailure(error: unknown) {
   return error instanceof TypeError || (error instanceof DOMException && error.name === "AbortError");
+}
+
+function authHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const token = localStorage.getItem("accessToken");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export function getApiErrorMessage(error: unknown, fallback = "Something went wrong.") {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = String((error as { message: unknown }).message ?? "");
+    if (message) return message;
+  }
+  return fallback;
 }
 
 export async function apiClient<T>(path: string, init?: RequestInit, timeoutMs = 8000): Promise<T> {
@@ -18,18 +41,25 @@ export async function apiClient<T>(path: string, init?: RequestInit, timeoutMs =
 
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+    response = await fetch(`${getApiUrl()}${path}`, {
       ...init,
       signal: controller.signal,
       credentials: "include",
       headers: {
-        "Content-Type": "application/json",
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        ...authHeaders(),
         ...init?.headers,
       },
     });
   } catch (error) {
     if (isNetworkFailure(error)) {
-      throw { code: "NETWORK_ERROR", message: NETWORK_ERROR_MESSAGE, status: 0 } satisfies ApiError;
+      const message = `Backend unreachable at ${getApiUrl()}. Start the CRM API.`;
+      throw Object.assign(new Error(message), {
+        code: "NETWORK_ERROR",
+        message,
+        status: 0,
+      } satisfies ApiError);
     }
     throw error;
   } finally {
@@ -38,16 +68,19 @@ export async function apiClient<T>(path: string, init?: RequestInit, timeoutMs =
 
   if (!response.ok) {
     let message = "Something went wrong.";
+    let code = "API_ERROR";
     try {
       const data = (await response.json()) as { error?: string; message?: string; code?: string };
       message = data.message ?? data.error ?? message;
-      throw { code: data.code ?? "API_ERROR", message, status: response.status } satisfies ApiError;
-    } catch (error) {
-      if (typeof error === "object" && error && "status" in error) {
-        throw error;
-      }
-      throw { code: "API_ERROR", message, status: response.status } satisfies ApiError;
+      code = data.code ?? code;
+    } catch {
+      // keep defaults
     }
+    throw Object.assign(new Error(message), {
+      code,
+      message,
+      status: response.status,
+    } satisfies ApiError);
   }
 
   return (await response.json()) as T;

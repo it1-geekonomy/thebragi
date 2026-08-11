@@ -7,18 +7,24 @@ import { getPostAuthDestination } from "@/features/auth/lib/post-auth-routing";
 
 export function AuthRedirector() {
   const router = useRouter();
-  const { isAuthenticated, subscriptionStatus, activePlan } = useAppSelector((state) => state.session);
+  const { isAuthenticated, subscriptionStatus, activePlan, isNewSignup } = useAppSelector(
+    (state) => state.session,
+  );
 
   useEffect(() => {
-    if (isAuthenticated) {
-      const destination = getPostAuthDestination({
-        isNewSignup: false,
-        subscriptionStatus: subscriptionStatus || "none",
+    // Wait until session hydration finishes — null means still loading.
+    if (!isAuthenticated || subscriptionStatus === null) return;
+
+    const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+    router.replace(
+      getPostAuthDestination({
+        isNewSignup,
+        subscriptionStatus,
         activePlan,
-      });
-      router.replace(destination);
-    }
-  }, [isAuthenticated, subscriptionStatus, activePlan, router]);
+        returnTo,
+      }),
+    );
+  }, [isAuthenticated, subscriptionStatus, activePlan, isNewSignup, router]);
 
   return null;
 }

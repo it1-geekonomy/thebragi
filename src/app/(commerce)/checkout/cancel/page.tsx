@@ -7,13 +7,14 @@ export const metadata: Metadata = { title: "Payment Cancelled" };
 export default async function CheckoutCancelPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string; seats?: string; cycle?: string }>;
+  searchParams: Promise<{ plan?: string; seats?: string; cycle?: string; mode?: string }>;
 }) {
   const params = await searchParams;
   const plan = params.plan || "bragi-full";
   const checkoutHref = ROUTES.checkout(plan, {
     seats: params.seats ? Number(params.seats) : undefined,
     cycle: params.cycle === "monthly" ? "monthly" : params.cycle === "annual" ? "annual" : undefined,
+    mode: params.mode === "trial" ? "trial" : "buy_now",
   });
 
   return (

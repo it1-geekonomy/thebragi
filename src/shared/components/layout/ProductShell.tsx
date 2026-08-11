@@ -9,22 +9,28 @@ import { useAppSelector } from "@/store/hooks";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { Badge } from "@/shared/components/ui/Badge";
 import { cn } from "@/shared/lib/cn";
+import {
+  getInactiveSubscriptionDestination,
+  hasActiveSubscription,
+} from "@/features/auth/lib/subscription";
 
 export function ProductShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const scope = useAppSelector((state) => state.session.scope);
   const subscriptionStatus = useAppSelector((state) => state.session.subscriptionStatus);
+  const activePlan = useAppSelector((state) => state.session.activePlan);
 
   useEffect(() => {
-    if (subscriptionStatus === "none") {
-      router.replace(ROUTES.subscriptionExpired);
+    if (subscriptionStatus === null) return;
+    if (!hasActiveSubscription(subscriptionStatus, activePlan)) {
+      router.replace(getInactiveSubscriptionDestination(subscriptionStatus));
       return;
     }
     if (scope !== "full") {
       router.replace(ROUTES.pricing);
     }
-  }, [scope, subscriptionStatus, router]);
+  }, [scope, subscriptionStatus, activePlan, router]);
 
   return (
     <div className="min-h-screen bg-[#070907] text-white lg:grid lg:grid-cols-[270px_1fr]">

@@ -22,20 +22,26 @@ export function BillingPageClient() {
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
 
-  const fetchStatus = () => {
+  useEffect(() => {
     if (!organizationId) {
       setLoading(false);
       return;
     }
+    let cancelled = false;
     subscriptionApi
       .getSubscriptionStatus(organizationId)
-      .then(setStatus)
-      .catch((err) => toast.error("Failed to load subscription status"))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    fetchStatus();
+      .then((data) => {
+        if (!cancelled) setStatus(data);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Failed to load subscription status");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [organizationId]);
 
   const handleCancel = async () => {
@@ -50,9 +56,12 @@ export function BillingPageClient() {
     try {
       await subscriptionApi.cancelAutoPay();
       toast.success("Subscription auto-pay cancelled.");
-      fetchStatus();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to cancel subscription");
+      if (organizationId) {
+        const data = await subscriptionApi.getSubscriptionStatus(organizationId);
+        setStatus(data);
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to cancel subscription");
     } finally {
       setCancelling(false);
     }
@@ -66,19 +75,20 @@ export function BillingPageClient() {
     );
   }
 
+  const statusKind = status?.status?.toLowerCase() ?? "";
   const badgeColor =
-    status?.status?.toUpperCase() === "ACTIVE"
+    statusKind === "active"
       ? "bg-[#7dc890] text-black"
-      : status?.status?.toUpperCase() === "TRIAL"
+      : statusKind === "trial"
         ? "bg-blue-300 text-black"
-        : status?.status?.toUpperCase() === "PAST_DUE"
+        : statusKind === "past_due"
           ? "bg-red-400 text-white"
           : "";
 
   const dynamicPlan = plans.find(
     (p) =>
-      p.slug === status?.plan?.toLowerCase() ||
-      p.name.toLowerCase() === status?.plan?.toLowerCase(),
+      p.name.toLowerCase() === status?.plan?.toLowerCase() ||
+      p.slug.toLowerCase() === status?.plan?.toLowerCase(),
   );
 
   return (
@@ -115,7 +125,7 @@ export function BillingPageClient() {
             )}
           </div>
           <p className="mt-4 text-3xl font-semibold text-white">
-            {dynamicPlan?.name || status?.plan || "No Plan"}
+            {status?.plan || dynamicPlan?.name || "No Plan"}
           </p>
 
           {dynamicPlan && (
@@ -147,24 +157,24 @@ export function BillingPageClient() {
             </div>
           )}
 
-          {status?.status?.toUpperCase() === "TRIAL" && (
+          {statusKind === "trial" && (
             <p className="mt-2 text-sm text-white/52">
               Your trial ends on{" "}
-              {status.endDate
+              {status?.endDate
                 ? new Date(status.endDate).toLocaleDateString()
                 : "N/A"}
-              . ({status.daysRemaining} days remaining)
+              . ({status?.daysRemaining ?? 0} days remaining)
             </p>
           )}
 
-          {status?.status?.toUpperCase() === "ACTIVE" && (
+          {statusKind === "active" && (
             <p className="mt-2 text-sm text-white/52">
               Next renewal:{" "}
-              {status.endDate
+              {status?.endDate
                 ? new Date(status.endDate).toLocaleDateString()
                 : "N/A"}
               .
-              {status.autoPayEnabled
+              {status?.autoPayEnabled
                 ? " Auto-pay is active."
                 : " Auto-pay is inactive."}
             </p>

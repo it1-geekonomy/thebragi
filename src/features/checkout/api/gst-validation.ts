@@ -19,8 +19,8 @@ export async function fetchGstinValidation(gstin: string): Promise<GstinLookup> 
       address: pickString(data.address),
       message: pickString(data.message) || (data.valid ? "Verified against GSTN" : "GSTIN not found."),
     };
-  } catch (error: any) {
-    // apiClient throws ApiError which has message
-    return emptyGstLookup(gstin, pickString(error.message) || "GSTIN could not be verified.");
+  } catch (error: unknown) {
+    const message = error && typeof error === "object" && "message" in error ? String((error as { message: string }).message) : "";
+    return emptyGstLookup(gstin, pickString(message) || "GSTIN could not be verified.");
   }
 }

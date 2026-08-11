@@ -8,22 +8,27 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   error?: string;
 };
 
-export function Input({ className, label, error, id, type, ...props }: InputProps) {
+export function Input({ className, label, error, id, type, spellCheck, ...props }: InputProps) {
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
   const inputType = isPassword ? (showPassword ? "text" : "password") : type;
 
   return (
-    <label className="block text-sm text-white/72" htmlFor={id}>
+    <label className="block text-sm text-white/80" htmlFor={id}>
       {label ? <span className="mb-2 block font-medium">{label}</span> : null}
       <div className="relative">
         <input
           id={id}
           type={inputType}
+          spellCheck={spellCheck ?? false}
+          autoCorrect="off"
+          autoCapitalize="off"
           className={cn(
-            "h-12 w-full rounded-md border border-white/12 bg-black/35 px-4 text-base text-white outline-none transition focus:border-[#7dc890]",
+            "h-12 w-full appearance-none rounded-md border border-white/15 bg-[#111a13] px-4 text-[16px] leading-normal text-white shadow-none outline-none transition",
+            "placeholder:text-white/35 focus:border-[#7dc890] focus:ring-2 focus:ring-[#7dc890]/25",
+            "[color-scheme:dark]",
             isPassword && "pr-12",
-            error && "border-red-400/70",
+            error && "border-red-400/70 focus:border-red-400 focus:ring-red-400/20",
             className,
           )}
           {...props}
@@ -33,10 +38,11 @@ export function Input({ className, label, error, id, type, ...props }: InputProp
             type="button"
             onClick={(e) => {
               e.preventDefault();
-              setShowPassword(!showPassword);
+              setShowPassword((open) => !open);
             }}
             tabIndex={-1}
-            className="absolute right-0 top-0 flex h-12 w-12 items-center justify-center text-white/50 hover:text-white transition"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-white/50 transition hover:text-white"
           >
             {showPassword ? (
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -52,7 +58,7 @@ export function Input({ className, label, error, id, type, ...props }: InputProp
           </button>
         )}
       </div>
-      {error ? <span className="mt-2 block text-xs text-red-300">{error}</span> : null}
+      {error ? <span className="mt-2 block text-sm text-red-300">{error}</span> : null}
     </label>
   );
 }
