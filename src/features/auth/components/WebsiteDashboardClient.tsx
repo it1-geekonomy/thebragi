@@ -6,21 +6,31 @@ import { ROUTES } from "@/config/routes";
 import { Button } from "@/shared/components/ui/Button";
 import { useAppSelector } from "@/store/hooks";
 import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
+import {
+  getInactiveSubscriptionDestination,
+  hasActiveSubscription,
+} from "@/features/auth/lib/subscription";
 
 export function WebsiteDashboardClient() {
   const router = useRouter();
-  const { isAuthenticated, activePlan, userName, userEmail } = useAppSelector((state) => state.session);
+  const { isAuthenticated, activePlan, userName, userEmail, subscriptionStatus } = useAppSelector(
+    (state) => state.session,
+  );
   const { plans } = useSubscriptionPlans();
+  const subscribed = hasActiveSubscription(subscriptionStatus, activePlan);
 
   useEffect(() => {
     if (!isAuthenticated) {
       router.replace(ROUTES.signIn);
-    } else if (!activePlan) {
-      router.replace(ROUTES.subscriptionExpired);
+      return;
     }
-  }, [isAuthenticated, activePlan, router]);
+    if (subscriptionStatus === null) return;
+    if (!subscribed) {
+      router.replace(getInactiveSubscriptionDestination(subscriptionStatus));
+    }
+  }, [isAuthenticated, subscribed, subscriptionStatus, router]);
 
-  if (!isAuthenticated || !activePlan) {
+  if (!isAuthenticated || !subscribed) {
     return null;
   }
 

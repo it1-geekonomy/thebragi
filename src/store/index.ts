@@ -1,6 +1,6 @@
 import { configureStore, createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
-export type SubscriptionStatus = "trialing" | "active" | "none";
+export type SubscriptionStatus = "trialing" | "active" | "none" | "expired";
 
 type SessionState = {
   isAuthenticated: boolean;

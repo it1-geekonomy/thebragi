@@ -19,7 +19,7 @@ export function SubscriptionBanner() {
 
   if (!status) return null;
 
-  if (status.status === "TRIAL") {
+  if (status.status.toLowerCase() === "trial") {
     return (
       <div className="bg-blue-600 px-4 py-2 text-center text-sm font-medium text-white">
         {status.daysRemaining} days remaining in trial.{" "}
@@ -30,7 +30,7 @@ export function SubscriptionBanner() {
     );
   }
 
-  if (status.status === "PAST_DUE") {
+  if (status.status.toLowerCase() === "past_due") {
     return (
       <div className="bg-red-600 px-4 py-2 text-center text-sm font-medium text-white">
         Your payment is past due, please update billing.{" "}

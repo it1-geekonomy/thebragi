@@ -10,10 +10,10 @@ import { useAppSelector } from "@/store/hooks";
 
 export function CheckoutSuccessClient({ crmLoginUrl }: { crmLoginUrl: string }) {
   const router = useRouter();
-  const [billing, setBilling] = useState(readVerifiedBilling);
+  const [billing, setBilling] = useState(() => readVerifiedBilling());
   const [redirecting, setRedirecting] = useState(false);
-
   const isAuthenticated = useAppSelector((state) => state.session.isAuthenticated);
+  const activePlan = useAppSelector((state) => state.session.activePlan);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -21,12 +21,32 @@ export function CheckoutSuccessClient({ crmLoginUrl }: { crmLoginUrl: string }) 
       return;
     }
     const verified = readVerifiedBilling();
-    if (!verified?.gstin) {
-      router.replace(ROUTES.pricing);
+    if (verified?.gstin) {
+      queueMicrotask(() => setBilling(verified));
       return;
     }
-    setBilling(verified);
-  }, [isAuthenticated, router]);
+    // Paid session without sessionStorage (refresh) — still allow continue via active plan
+    if (activePlan) {
+      queueMicrotask(() =>
+        setBilling({
+          gstin: "",
+          legalName: "Your organization",
+          pan: "",
+          stateCode: "",
+          stateName: "",
+          address: "",
+          postalCode: "",
+          country: "India",
+          plan: activePlan,
+          seats: 0,
+          cycle: "annual",
+          verifiedAt: Date.now(),
+        }),
+      );
+      return;
+    }
+    router.replace(ROUTES.pricing);
+  }, [activePlan, isAuthenticated, router]);
 
   const goToApp = () => {
     setRedirecting(true);
@@ -48,22 +68,30 @@ export function CheckoutSuccessClient({ crmLoginUrl }: { crmLoginUrl: string }) 
       <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[#7dc890]">Payment complete</p>
       <h1 className="mt-5 text-3xl font-semibold text-white sm:text-4xl">You&apos;re all set</h1>
       <p className="mt-4 text-sm leading-7 text-white/58">
-        GSTIN verified on this site before checkout. Your tax invoice will be issued to the entity below.
+        {billing.gstin
+          ? "GSTIN verified on this site before checkout. Your tax invoice will be issued to the entity below."
+          : "Your payment was confirmed. Continue to the app to finish setup."}
       </p>
 
       <dl className="mt-8 grid gap-3 rounded-lg border border-white/10 bg-white/[0.04] p-5 text-sm">
-        <div className="flex justify-between gap-3">
-          <dt className="text-white/48">Legal name</dt>
-          <dd className="text-right font-medium text-white">{billing.legalName}</dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-white/48">GSTIN</dt>
-          <dd className="font-medium text-[#bce8c5]">{billing.gstin}</dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-white/48">Place of supply</dt>
-          <dd className="text-right text-white/84">{billing.stateName}</dd>
-        </div>
+        {billing.legalName ? (
+          <div className="flex justify-between gap-3">
+            <dt className="text-white/48">Legal name</dt>
+            <dd className="text-right font-medium text-white">{billing.legalName}</dd>
+          </div>
+        ) : null}
+        {billing.gstin ? (
+          <div className="flex justify-between gap-3">
+            <dt className="text-white/48">GSTIN</dt>
+            <dd className="font-medium text-[#bce8c5]">{billing.gstin}</dd>
+          </div>
+        ) : null}
+        {billing.stateName ? (
+          <div className="flex justify-between gap-3">
+            <dt className="text-white/48">Place of supply</dt>
+            <dd className="text-right text-white/84">{billing.stateName}</dd>
+          </div>
+        ) : null}
       </dl>
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row">

@@ -1,7 +1,8 @@
 import { fetchGstinValidation } from "@/features/checkout/api/gst-validation";
-import { GST_RATE, HALF_GST_RATE, INDIAN_STATES, SELLER_STATE_CODE, stateNameFromCode } from "@/features/checkout/lib/gst-states";
+import { INDIAN_STATES } from "@/features/checkout/lib/gst-states";
 
 export { INDIAN_STATES, SELLER_STATE_CODE, SELLER_STATE_NAME, GST_RATE, HALF_GST_RATE, SAC_CODE, stateNameFromCode } from "@/features/checkout/lib/gst-states";
+export type { TaxBreakdown } from "./order-math";
 
 export type GstinLookup = {
   gstin: string;
@@ -113,20 +114,6 @@ export async function lookupGstin(raw: string, opts?: { force?: boolean }): Prom
     gstinCache.set(gstin, { value: result, expiresAt: Date.now() + GSTIN_CACHE_TTL_MS });
   }
   return result;
-}
-
-export type TaxBreakdown =
-  | { kind: "intra"; cgst: number; sgst: number; igst: 0; totalTax: number }
-  | { kind: "inter"; cgst: 0; sgst: 0; igst: number; totalTax: number };
-
-export function computeTax(subtotal: number, placeOfSupplyCode: string): TaxBreakdown {
-  const intra = placeOfSupplyCode === SELLER_STATE_CODE;
-  if (intra) {
-    const half = Math.round(subtotal * HALF_GST_RATE);
-    return { kind: "intra", cgst: half, sgst: half, igst: 0, totalTax: half * 2 };
-  }
-  const igst = Math.round(subtotal * GST_RATE);
-  return { kind: "inter", cgst: 0, sgst: 0, igst, totalTax: igst };
 }
 
 export function renewalDateLabel(cycle: "monthly" | "annual") {

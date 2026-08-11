@@ -24,7 +24,7 @@ export function CheckoutCTAButton({ checkoutPlan, className }: { checkoutPlan: s
 
   return (
     <Link
-      href={ROUTES.checkout(checkoutPlan)}
+      href={ROUTES.checkout(checkoutPlan, { mode: "buy_now" })}
       className={cn(
         "inline-flex min-h-11 items-center justify-center rounded-md px-5 py-2.5 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7dc890] bg-[#5f9965] text-white hover:bg-[#6bad72]",
         className,

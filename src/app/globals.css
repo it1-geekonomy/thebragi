@@ -23,6 +23,7 @@
 
 html {
   scroll-padding-top: 5rem;
+  color-scheme: dark;
 }
 
 body {
@@ -37,4 +38,28 @@ input,
 select,
 textarea {
   letter-spacing: 0;
+}
+
+input,
+textarea,
+select {
+  color-scheme: dark;
+}
+
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
+/* Opaque fill so autofill cannot paint a tight box around the glyphs */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #111a13 inset !important;
+  box-shadow: 0 0 0 1000px #111a13 inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff;
+  background-color: #111a13 !important;
+  transition: background-color 99999s ease-out;
 }

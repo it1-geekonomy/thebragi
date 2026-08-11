@@ -38,7 +38,7 @@ export function ForgotPasswordForm() {
         <BragiLogo />
         <h1 className="mt-6 text-3xl font-semibold text-white sm:text-4xl">Reset password</h1>
         <p className="mt-3 text-sm text-white/58 mb-6">
-          Enter your email address and we'll send you a link to reset your password.
+          Enter your email address and we&apos;ll send you a link to reset your password.
         </p>
 
         <form
@@ -50,8 +50,8 @@ export function ForgotPasswordForm() {
                 body: JSON.stringify({ email: values.email, appType: "website" }),
               });
               toast.success("If an account exists, a reset link has been sent to your email.");
-            } catch (err: any) {
-              toast.error(err.message || "Failed to send reset link.");
+            } catch (err: unknown) {
+              toast.error(err instanceof Error ? err.message : "Failed to send reset link.");
             }
           })}
         >

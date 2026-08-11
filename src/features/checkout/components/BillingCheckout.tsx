@@ -5,32 +5,49 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ROUTES } from "@/config/routes";
+import { brand } from "@/config/brand";
 import { setMockSession } from "@/store";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { apiClient, API_URL } from "@/shared/lib/api-client";
+import { apiClient, getApiErrorMessage, getApiUrl } from "@/shared/lib/api-client";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
-import { Alert } from "@/shared/components/ui/Alert";
 import { razorpayApi } from "@/features/subscription/api";
+import { paymentApi } from "@/features/subscription/services/paymentApi";
+import {
+  useRazorpayCheckout,
+  type RazorpaySuccessResponse,
+} from "@/features/subscription/hooks/useRazorpayCheckout";
 import {
   buildCheckoutPath,
   buildSignInForCheckout,
-  MIN_SEATS,
   type BillingCycle,
   type CheckoutParams,
+  type PurchaseMode,
 } from "@/features/checkout/lib/checkout-params";
+import {
+  clampSeats,
+  computeOrderTotals,
+  TRIAL_AUTHORIZATION_PAISE,
+  TRIAL_AUTHORIZATION_RUPEES,
+} from "@/features/checkout/lib/order-math";
 import {
   lookupGstin,
   resolveLocationFromAddress,
+  stateNameFromCode,
   type GstinLookup,
   type TaxBreakdown,
 } from "@/features/checkout/lib/gst";
 import { saveVerifiedBilling } from "@/features/checkout/lib/billing-session";
-import { computeOrderTotals } from "@/features/checkout/lib/pricing";
+import { clearSignupDraft, readSignupDraft } from "@/features/checkout/lib/billing-session";
+import { INDIAN_STATES, SELLER_STATE_CODE } from "@/features/checkout/lib/gst-states";
+import { Select } from "@/shared/components/ui/Select";
 import { OrderSummaryPanel } from "@/features/checkout/components/OrderSummaryPanel";
 import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
+import { fetchAuthSessionDetails } from "@/features/auth/lib/post-auth-routing";
 
+// ponytail: GSTN lookup skipped for local checkout testing
+const SKIP_GST_VALIDATION = false;
 
 function syncCheckoutUrl(params: CheckoutParams) {
   const path = buildCheckoutPath(params);
@@ -38,19 +55,26 @@ function syncCheckoutUrl(params: CheckoutParams) {
 }
 
 function applyGstLookup(
-  setLegalName: (v: string) => void,
-  setPan: (v: string) => void,
-  setAddress: (v: string) => void,
+  setters: {
+    setLegalName: (value: string) => void;
+    setPan: (value: string) => void;
+    setAddress: (value: string) => void;
+    setStateCode: (value: string) => void;
+    setStateName: (value: string) => void;
+    setCountry: (value: string) => void;
+  },
   result: GstinLookup,
 ) {
-  if (result.legalName) setLegalName(result.legalName);
-  if (result.pan) setPan(result.pan);
-  if (result.address) setAddress(result.address);
-}
-
-function clearGstFields(setLegalName: (v: string) => void, setPan: (v: string) => void) {
-  setLegalName("");
-  setPan("");
+  if (result.legalName) setters.setLegalName(result.legalName);
+  if (result.pan) setters.setPan(result.pan);
+  if (result.address) setters.setAddress(result.address);
+  const code = result.gstin.slice(0, 2);
+  const name = stateNameFromCode(code);
+  if (name !== "Unknown") {
+    setters.setStateCode(code);
+    setters.setStateName(name);
+  }
+  setters.setCountry("India");
 }
 
 export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
@@ -59,14 +83,21 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   const isAuthenticated = useAppSelector((state) => state.session.isAuthenticated);
   const { organizationId: checkoutOrgId, userEmail: checkoutEmail } = useAppSelector((state) => state.checkout);
   const { organizationId: sessionOrgId, userEmail: sessionEmail, userName } = useAppSelector((state) => state.session);
+  const [signupDraft] = useState(() => readSignupDraft());
   const organizationId = checkoutOrgId || sessionOrgId;
-  const userEmail = checkoutEmail || sessionEmail || userName;
+  const userEmail = checkoutEmail || sessionEmail || signupDraft?.email || userName;
+  const purchaseMode: PurchaseMode = initial.mode;
+  const { initializePayment } = useRazorpayCheckout();
 
   const [seats, setSeats] = useState(initial.seats);
   const [cycle, setCycle] = useState<BillingCycle>(initial.cycle);
-  
   const { plans, loading } = useSubscriptionPlans();
-  const plan = plans.find(p => p.slug === initial.plan);
+  const plan = plans.find((item) => item.slug === initial.plan);
+  const minimumSeats = plan?.minimumSeats ?? 0;
+  const maximumSeats = plan?.maximumSeats;
+  const resolvedSeats = plan
+    ? clampSeats(seats || plan.minimumSeats, plan.minimumSeats, plan.maximumSeats)
+    : seats;
 
   const [legalName, setLegalName] = useState("");
   const [gstin, setGstin] = useState("");
@@ -80,316 +111,409 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   const [gstChecking, setGstChecking] = useState(false);
   const [locationResolving, setLocationResolving] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
-  const [isCreatingOrg, setIsCreatingOrg] = useState(false);
   const gstRequestId = useRef(0);
   const addressRequestId = useRef(0);
 
-  const totals = plan ? computeOrderTotals(plan, seats, cycle, stateCode) : { subtotal: 0, recurringSubtotal: 0, tax: { kind: "intra", totalTax: 0, cgst: 0, sgst: 0, igst: 0 } as TaxBreakdown, total: 0, basePrice: 0, perUser: 0, overageSeats: 0, setupFee: 0 };
-  const gstVerified = Boolean(gstLookup?.valid && gstLookup.gstin === gstin.trim().toUpperCase());
-  const billingComplete = Boolean(
-    legalName.trim() &&
-      pan.trim() &&
-      address.trim() &&
-      stateCode.trim() &&
-      stateName.trim() &&
-      postalCode.trim() &&
-      country.trim(),
-  );
-  const canPay =
-    gstVerified && billingComplete && !gstChecking && !locationResolving && organizationId && !isCreatingOrg;
+  const totals = plan
+    ? computeOrderTotals(plan, resolvedSeats, cycle, stateCode, SELLER_STATE_CODE)
+    : ({
+        subtotal: 0,
+        recurringSubtotal: 0,
+        tax: { kind: "intra", totalTax: 0, cgst: 0, sgst: 0, igst: 0 } as TaxBreakdown,
+        total: 0,
+        basePrice: 0,
+        perUser: 0,
+        overageSeats: 0,
+        setupFee: 0,
+      } satisfies {
+        subtotal: number;
+        recurringSubtotal: number;
+        tax: TaxBreakdown;
+        total: number;
+        basePrice: number;
+        perUser: number;
+        overageSeats: number;
+        setupFee: number;
+      });
 
   useEffect(() => {
-    if (!isAuthenticated || !plan) {
-      router.push(buildSignInForCheckout({ plan: initial.plan, seats, cycle }));
+    if (!isAuthenticated && !signupDraft) {
+      // replace — push + syncCheckoutUrl's history.replaceState race and cancel soft nav
+      router.replace(
+        buildSignInForCheckout(
+          { plan: initial.plan, seats: resolvedSeats, cycle, mode: purchaseMode },
+          "signup",
+        ),
+      );
+      return;
     }
-  }, [isAuthenticated, router, plan, initial.plan, seats, cycle]);
+    if (!loading && !plan) {
+      router.replace(ROUTES.pricing);
+    }
+  }, [cycle, initial.plan, isAuthenticated, loading, plan, purchaseMode, resolvedSeats, router, signupDraft]);
 
   useEffect(() => {
-    syncCheckoutUrl({ plan: initial.plan, seats, cycle });
-  }, [initial.plan, seats, cycle]);
+    // Don't rewrite history while redirecting users who still need an account.
+    if (!isAuthenticated && !signupDraft) return;
+    syncCheckoutUrl({ plan: initial.plan, seats: resolvedSeats, cycle, mode: purchaseMode });
+  }, [cycle, initial.plan, isAuthenticated, purchaseMode, resolvedSeats, signupDraft]);
 
   useEffect(() => {
-    if (!isAuthenticated || organizationId) return;
+    if (!isAuthenticated || organizationId || signupDraft) return;
 
     let cancelled = false;
 
-    async function initOrganization() {
+    async function hydrateOrganization() {
       const token = localStorage.getItem("accessToken");
-      if (!token) {
-        // ponytail: mock signup has no JWT — local org so billing UI is reachable
-        dispatch(setMockSession({ organizationId: `local-${Date.now()}` }));
-        return;
-      }
+      if (!token) return;
 
-      setIsCreatingOrg(true);
       try {
         const controller = new AbortController();
         const timer = window.setTimeout(() => controller.abort(), 8000);
-        const response = await fetch(`${API_URL}/auth/session`, {
+        const response = await fetch(`${getApiUrl()}/auth/session`, {
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
         window.clearTimeout(timer);
         const data = (await response.json()) as { organizationId?: string };
         if (cancelled) return;
-        if (data?.organizationId) {
+        if (data.organizationId) {
           dispatch(setMockSession({ organizationId: data.organizationId }));
-          return;
         }
       } catch {
-        // fall through — backend may be down
-      }
-
-      if (userEmail) {
-        try {
-          const defaultName = `Workspace - ${userEmail.split("@")[0]} - ${Math.floor(Math.random() * 10000)}`;
-          const res = await apiClient<{ organization: { id: string } }>("/organizations/register", {
-            method: "POST",
-            body: JSON.stringify({ name: defaultName, superAdminEmail: userEmail }),
-          });
-          if (cancelled) return;
-          if (res.organization?.id) {
-            dispatch(setMockSession({ organizationId: res.organization.id }));
-            return;
-          }
-        } catch {
-          // fall through — use local org so checkout UI still loads
-        }
-      }
-
-      if (!cancelled) {
-        dispatch(setMockSession({ organizationId: `local-${Date.now()}` }));
+        // session hydrate is best-effort
       }
     }
 
-    void initOrganization().finally(() => {
-      if (!cancelled) setIsCreatingOrg(false);
-    });
-
+    void hydrateOrganization();
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, organizationId, userEmail, dispatch]);
+  }, [dispatch, isAuthenticated, organizationId, signupDraft]);
 
   useEffect(() => {
+    if (SKIP_GST_VALIDATION) return;
     const value = gstin.trim().toUpperCase();
     if (value.length < 15) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- drop GST validity until a full number is entered
       setGstLookup(null);
       setGstChecking(false);
-      clearGstFields(setLegalName, setPan);
       return;
     }
 
-    const id = ++gstRequestId.current;
+    const requestId = ++gstRequestId.current;
     setGstChecking(true);
     const timer = window.setTimeout(() => {
       void lookupGstin(value).then((result) => {
-        if (id !== gstRequestId.current) return;
+        if (requestId !== gstRequestId.current) return;
         setGstChecking(false);
         setGstLookup(result);
-        if (result?.valid) applyGstLookup(setLegalName, setPan, setAddress, result);
-        else clearGstFields(setLegalName, setPan);
+        if (result?.valid) {
+          applyGstLookup(
+            { setLegalName, setPan, setAddress, setStateCode, setStateName, setCountry },
+            result,
+          );
+        }
       });
     }, 400);
+
     return () => window.clearTimeout(timer);
   }, [gstin]);
 
   useEffect(() => {
     const text = address.trim();
-    if (!text) {
-      setPostalCode("");
-      setStateName("");
-      setStateCode("");
-      setCountry("");
-      return;
-    }
+    if (!text) return;
 
-    const id = ++addressRequestId.current;
+    const requestId = ++addressRequestId.current;
     setLocationResolving(true);
     const timer = window.setTimeout(() => {
       void resolveLocationFromAddress(text).then((location) => {
-        if (id !== addressRequestId.current) return;
+        if (requestId !== addressRequestId.current) return;
         setLocationResolving(false);
-        setPostalCode(location.postalCode);
-        setStateName(location.stateName);
-        setStateCode(location.stateCode);
-        setCountry(location.country);
+        if (location.postalCode) setPostalCode(location.postalCode);
+        if (location.stateName) setStateName(location.stateName);
+        if (location.stateCode) setStateCode(location.stateCode);
+        if (location.country) setCountry(location.country);
       });
     }, 500);
+
     return () => window.clearTimeout(timer);
   }, [address]);
 
-  const handlePay = async (mode: "trial" | "subscription") => {
-    if (gstChecking) {
-      toast.message("Still validating GSTIN — please wait.");
-      return;
-    }
-
+  async function handlePay() {
+    if (!plan) return;
     const normalizedGstin = gstin.trim().toUpperCase();
-    if (normalizedGstin.length !== 15) {
-      toast.error("Enter a 15-character GSTIN.");
-      return;
-    }
-
-    // Fresh verification on the website before payment — never trust stale UI state
-    setGstChecking(true);
     let verified: GstinLookup | null = null;
-    try {
-      verified = await lookupGstin(normalizedGstin, { force: true });
-      setGstLookup(verified);
-      if (!verified?.valid) {
-        toast.error(verified?.message || "GSTIN must be verified against GSTN before payment.");
+
+    if (!SKIP_GST_VALIDATION) {
+      if (gstChecking) {
+        toast.message("Still validating GSTIN, please wait.");
         return;
       }
-      applyGstLookup(setLegalName, setPan, setAddress, verified);
-    } finally {
-      setGstChecking(false);
+      if (normalizedGstin.length !== 15) {
+        toast.error("Enter a 15-character GSTIN.");
+        return;
+      }
+
+      setGstChecking(true);
+      try {
+        verified = await lookupGstin(normalizedGstin, { force: true });
+        setGstLookup(verified);
+        if (!verified?.valid) {
+          toast.error(verified?.message || "GSTIN must be verified against GSTN before payment.");
+          return;
+        }
+      } finally {
+        setGstChecking(false);
+      }
+
+      if (!verified) {
+        toast.error("Unable to verify GSTIN right now.");
+        return;
+      }
     }
 
-    const finalPan = verified!.pan.trim() || pan.trim();
-    if (!verified!.legalName.trim() || !finalPan) {
-      toast.error("GST lookup did not return legal name, and PAN is missing.");
+    const finalLegalName = legalName.trim() || verified?.legalName.trim() || "";
+    const finalPan = pan.trim() || verified?.pan.trim() || "";
+    const finalStateCode = stateCode.trim() || verified?.gstin.slice(0, 2) || "";
+    const finalStateName =
+      stateName.trim() || (stateNameFromCode(finalStateCode) !== "Unknown" ? stateNameFromCode(finalStateCode) : "");
+    const finalCountry = country.trim() || "India";
+    if (!finalLegalName || !finalPan) {
+      toast.error("Enter registered legal name and PAN.");
       return;
     }
     if (!address.trim()) {
       toast.error("Enter your billing address.");
       return;
     }
-    if (!postalCode.trim() || !stateCode.trim() || !stateName.trim() || !country.trim()) {
-      toast.error("Include a valid 6-digit pincode in your billing address so we can determine place of supply.");
+    if (!postalCode.trim() || !finalStateCode || !finalStateName || !finalCountry) {
+      toast.error("Enter state, postal code, and country.");
       return;
     }
-    if (!organizationId) {
-      toast.error("No organization linked. Sign in again with OTP or password.");
+    if (!organizationId && !signupDraft) {
+      toast.error("Create an account to continue checkout.");
+      router.push(
+        buildSignInForCheckout(
+          { plan: initial.plan, seats: resolvedSeats, cycle, mode: purchaseMode },
+          "signup",
+        ),
+      );
       return;
     }
 
     saveVerifiedBilling({
-      gstin: verified!.gstin,
-      legalName: verified!.legalName,
+      gstin: verified?.gstin || normalizedGstin,
+      legalName: finalLegalName,
       pan: finalPan,
-      stateCode,
-      stateName,
+      stateCode: finalStateCode,
+      stateName: finalStateName,
       address: address.trim(),
       postalCode,
-      country,
-      plan: plan!.slug,
-      seats,
+      country: finalCountry,
+      plan: plan.slug,
+      seats: resolvedSeats,
       cycle,
       verifiedAt: Date.now(),
     });
 
     setIsPaying(true);
     try {
-      // ponytail: mock-signup orgs can't hit Razorpay — complete the funnel locally
-      if (organizationId.startsWith("local-")) {
-        dispatch(setMockSession({ isAuthenticated: true, scope: "full", activePlan: plan!.slug }));
-        toast.success("Subscription activated.");
-        router.push("/checkout/success");
-        return;
-      }
-
-      let order_id = "";
-      let subscription_id = "";
-      let amount = 0;
-
-      if (mode === "trial") {
-        const order = await razorpayApi.createTrialAuth({
-          organizationId,
-          planId: plan!.id,
-          seats,
-          billingCycle: cycle,
-          billing: {
-            legalName: verified!.legalName,
-            gstin: verified!.gstin,
-            pan: finalPan,
-            address: address.trim(),
-            stateCode,
-            stateName,
-            postalCode,
-            country,
-          },
-        });
-        order_id = order.id;
-        amount = order.amount;
-      } else {
-        const sub = await razorpayApi.createAutoPaySubscription({
-          organizationId,
-          planId: plan!.id,
-          seats,
-          billingCycle: cycle,
-          billing: {
-            legalName: verified!.legalName,
-            gstin: verified!.gstin,
-            pan: finalPan,
-            address: address.trim(),
-            stateCode,
-            stateName,
-            postalCode,
-            country,
-          },
-        });
-        subscription_id = sub.subscription_id;
-        amount = totals.total * 100; // Razorpay expects amount in paise if required, though subscription_id doesn't need amount
-      }
-
-      const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: mode === "trial" ? amount : undefined,
-        currency: "INR",
-        order_id: mode === "trial" ? order_id : undefined,
-        subscription_id: mode === "subscription" ? subscription_id : undefined,
-        name: "Bragi",
-        description: mode === "trial" ? `Free Trial Authorization` : `${plan!.name} · ${seats} seats · ${cycle}`,
-        handler: async (response: Record<string, string>) => {
-          if (mode === "trial") {
-            await razorpayApi.verifyTrialAuth({ ...response, organizationId, planId: plan!.id });
-          } else {
-            await razorpayApi.verifySubscriptionPayment({ ...response, organizationId, planId: plan!.id });
-          }
-          dispatch(setMockSession({ isAuthenticated: true, scope: "full", activePlan: plan!.slug }));
-          router.push("/checkout/success");
-        },
-        prefill: { email: userEmail ?? undefined, name: legalName },
-        theme: { color: "#7dc890" },
+      const billing = {
+        legalName: finalLegalName,
+        gstin: verified?.gstin || normalizedGstin,
+        pan: finalPan,
+        address: address.trim(),
+        stateCode: finalStateCode,
+        stateName: finalStateName,
+        postalCode,
+        country: finalCountry,
       };
 
+      const trialOrder =
+        purchaseMode !== "trial"
+          ? null
+          : organizationId
+            ? await paymentApi.createTrialAuth({
+                organizationId,
+                planId: plan.id,
+                billingCycle: cycle,
+              })
+            : signupDraft?.resume
+              ? await paymentApi.resumeTrialAuth({
+                  email: signupDraft.email,
+                  password: signupDraft.password,
+                })
+              : signupDraft
+                ? await paymentApi.createTrialAuth({
+                    name: signupDraft.company,
+                    superAdminEmail: signupDraft.email,
+                    superAdminName: signupDraft.fullName,
+                    industry: signupDraft.industry,
+                    adminPassword: signupDraft.password,
+                    planId: plan.id,
+                    billingCycle: cycle,
+                  })
+                : null;
 
-
-      const loadRazorpay = () => new Promise((resolve) => {
-        if (typeof window !== "undefined" && (window as any).Razorpay) {
-          resolve(true);
-          return;
-        }
-        const script = document.createElement("script");
-        script.src = "https://checkout.razorpay.com/v1/checkout.js";
-        script.onload = () => resolve(true);
-        script.onerror = () => resolve(false);
-        document.body.appendChild(script);
-      });
-
-      const scriptLoaded = await loadRazorpay();
-      if (!scriptLoaded) {
-        toast.error("Failed to load payment gateway. Please check your connection.");
+      if (purchaseMode === "trial" && !trialOrder) {
+        toast.error("Create an account to start the trial.");
         setIsPaying(false);
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rzp = new (window as any).Razorpay(options);
-      rzp.on("payment.failed", () => setIsPaying(false));
-      rzp.open();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Payment failed.");
+      if (purchaseMode === "buy_now" && !organizationId && !signupDraft) {
+        toast.error("Create an account or sign in to buy this plan.");
+        setIsPaying(false);
+        return;
+      }
+
+      const buyNowOrder =
+        purchaseMode !== "buy_now"
+          ? null
+          : await razorpayApi.createBuyNowOrder({
+              ...(organizationId
+                ? { organizationId }
+                : signupDraft
+                  ? {
+                      name: signupDraft.company,
+                      superAdminEmail: signupDraft.email,
+                      superAdminName: signupDraft.fullName,
+                      industry: signupDraft.industry,
+                      adminPassword: signupDraft.password,
+                    }
+                  : {}),
+              planId: plan.id,
+              seats: resolvedSeats,
+              billingCycle: cycle,
+              billing,
+            });
+
+      const razorpayKey =
+        buyNowOrder?.keyId ??
+        trialOrder?.keyId ??
+        process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ??
+        "";
+      if (!razorpayKey.startsWith("rzp_test_") && process.env.NODE_ENV !== "production") {
+        toast.error("Local checkout requires a Razorpay test key (rzp_test_…).");
+        setIsPaying(false);
+        return;
+      }
+
+      // Trial: backend amount is paise. Buy Now amount/quote are rupees; amountPaise is authoritative.
+      const trialPaise =
+        trialOrder?.amountPaise ??
+        (typeof trialOrder?.amount === "number" && trialOrder.amount >= 100
+          ? trialOrder.amount
+          : TRIAL_AUTHORIZATION_PAISE);
+      const buyNowRupees = buyNowOrder?.quote?.total ?? buyNowOrder?.amount ?? totals.total;
+      const buyNowPaise = buyNowOrder?.amountPaise ?? Math.round(buyNowRupees * 100);
+
+      await initializePayment(
+        {
+          key: razorpayKey,
+          currency: buyNowOrder?.currency ?? trialOrder?.currency ?? "INR",
+          amount: purchaseMode === "trial" ? trialPaise : buyNowPaise,
+          order_id:
+            purchaseMode === "trial"
+              ? (trialOrder?.orderId ?? trialOrder?.id)
+              : (buyNowOrder?.orderId ?? buyNowOrder?.id),
+          name: brand.name,
+          description:
+            purchaseMode === "trial"
+              ? `Free Trial Authorization — ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)}`
+              : `${plan.name} · ${resolvedSeats} seats · ${cycle} · ${formatCurrency(buyNowRupees)}`,
+          prefill: { email: userEmail ?? undefined, name: legalName },
+          theme: { color: brand.colors.greenBright },
+        },
+        async (response: RazorpaySuccessResponse) => {
+          const pendingTrialId = trialOrder?.pendingTrialId ?? buyNowOrder?.pendingTrialId;
+          const billingProfile = {
+            registeredLegalName: billing.legalName,
+            gstin: billing.gstin,
+            panNumber: billing.pan,
+            streetAddress: billing.address,
+            state: billing.stateName,
+            postalCode: billing.postalCode,
+            country: billing.country,
+          };
+
+          let paidOrganizationId = organizationId;
+
+          if (purchaseMode === "trial") {
+            if (!pendingTrialId) throw new Error("Missing trial checkout id.");
+            const verified = await paymentApi.verifyTrialAuth({
+              ...response,
+              pendingTrialId,
+            });
+            paidOrganizationId = verified.organizationId ?? paidOrganizationId;
+          } else {
+            const verified = await razorpayApi.verifyBuyNowPayment({
+              ...response,
+              ...(organizationId ? { organizationId } : { pendingTrialId }),
+              planId: plan.id,
+              seats: resolvedSeats,
+            });
+            paidOrganizationId = verified.organizationId ?? paidOrganizationId;
+          }
+
+          if (signupDraft) {
+            const loginData = await apiClient<{ accessToken: string; user?: { name?: string } }>("/auth/login", {
+              method: "POST",
+              body: JSON.stringify({ email: signupDraft.email, password: signupDraft.password }),
+            });
+            localStorage.setItem("accessToken", (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""));
+            clearSignupDraft();
+          }
+
+          if (paidOrganizationId && localStorage.getItem("accessToken")) {
+            try {
+              await paymentApi.updateOrganizationProfile(paidOrganizationId, billingProfile);
+            } catch {
+              // payment already succeeded — don't fail checkout if profile save is rejected
+            }
+          }
+
+          const token = localStorage.getItem("accessToken");
+          const details = token ? await fetchAuthSessionDetails(token).catch(() => null) : null;
+          dispatch(
+            setMockSession({
+              isAuthenticated: true,
+              scope: "full",
+              userEmail: signupDraft?.email ?? details?.userEmail ?? userEmail,
+              userName: signupDraft?.fullName ?? details?.userName ?? userName,
+              activePlan: details?.activePlan ?? plan.slug,
+              subscriptionStatus:
+                details?.subscriptionStatus ?? (purchaseMode === "trial" ? "trialing" : "active"),
+              organizationId: details?.organizationId ?? paidOrganizationId,
+              trialStartedAt: details?.trialStartedAt ?? null,
+              trialEndsAt: details?.trialEndsAt ?? null,
+            }),
+          );
+          router.push("/checkout/success");
+        },
+        (error) => {
+          toast.error(error?.message || "Payment failed.");
+          setIsPaying(false);
+        },
+      );
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Payment failed."));
       setIsPaying(false);
     }
-  };
+  }
 
-  if (!isAuthenticated || loading || !plan) {
+  if ((!isAuthenticated && !signupDraft) || loading || !plan) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-white">
-        <p>{loading ? "Loading plans..." : "Redirecting to secure sign-in..."}</p>
-        <Link href={buildSignInForCheckout({ plan: initial.plan, seats, cycle })} className="text-[#a8dfb3] underline">
+        <p>{loading ? "Loading plans..." : "Redirecting to create your account..."}</p>
+        <Link
+          href={buildSignInForCheckout(
+            { plan: initial.plan, seats: resolvedSeats, cycle, mode: purchaseMode },
+            "signup",
+          )}
+          className="text-[#a8dfb3] underline"
+        >
           Click here if you are not redirected automatically
         </Link>
       </div>
@@ -397,168 +521,158 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   }
 
   return (
-    <>
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-start">
-        <section className="order-2 rounded-lg border border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:order-1">
-          <div className="inline-flex flex-wrap items-center gap-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm font-semibold text-black">3</span>
-            <p className="text-sm font-semibold text-white">Billing & GST details</p>
-            <Link
-              href={ROUTES.pricing}
-              className="text-xs font-semibold text-white/42 hover:text-[#a8dfb3] sm:ml-2"
-            >
-              Step 1 · Plan
-            </Link>
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-start">
+      <section className="order-2 rounded-lg border border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:order-1">
+        <div className="inline-flex items-center gap-3">
+          <p className="text-sm font-semibold text-white">Billing & GST details</p>
+          <Link href={ROUTES.pricing} className="text-xs font-semibold text-white/42 hover:text-[#a8dfb3] sm:ml-2">
+            Step 1 · Plan
+          </Link>
+        </div>
+
+        <div className="mt-8">
+          <h1 className="text-2xl font-semibold text-white sm:text-3xl">
+            {purchaseMode === "trial" ? "Trial billing details" : "Billing details"}
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-white/58">
+            {purchaseMode === "trial"
+              ? `GSTIN validates legal name and PAN from GSTN. This path authorizes only ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} for trial activation.`
+              : "GSTIN validates legal name and PAN from GSTN. The backend receives plan, seats, billing cycle, and billing details before Razorpay is opened."}
+          </p>
+        </div>
+
+        {!organizationId && !signupDraft ? (
+          <div className="mt-8 flex flex-col items-center justify-center space-y-4 rounded-lg border border-white/10 bg-black/35 p-10">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent" />
+            <p className="text-sm font-medium text-white/70">Preparing checkout...</p>
           </div>
+        ) : (
+          <form
+            className="mt-8 grid gap-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handlePay();
+            }}
+          >
+            <Input
+              id="legal-name"
+              label="Registered legal name"
+              value={legalName}
+              onChange={(event) => setLegalName(event.target.value)}
+              placeholder="Auto-filled from GSTIN, or type manually"
+            />
 
-          <div className="mt-8">
-            <h1 className="text-2xl font-semibold text-white sm:text-3xl">Billing details</h1>
-            <p className="mt-2 text-sm leading-6 text-white/58">
-              GSTIN validates legal name and PAN from GSTN. Enter billing address manually — pincode, state, and country are read from that address.
-            </p>
-          </div>
-
-          {!organizationId || isCreatingOrg ? (
-            <div className="mt-8 flex flex-col items-center justify-center space-y-4 rounded-lg border border-white/10 bg-black/35 p-10">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent" />
-              <p className="text-sm font-medium text-white/70">Initializing your secure checkout...</p>
-            </div>
-          ) : (
-            <form
-              className="mt-8 grid gap-5"
-              onSubmit={(event) => {
-                event.preventDefault();
-              }}
-            >
-              <Input
-                id="legal-name"
-                label="Registered legal name"
-                value={legalName}
-                readOnly
-              />
-
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
-                  <Input
-                    id="gstin"
-                    label="GSTIN"
-                    value={gstin}
-                    onChange={(e) => setGstin(e.target.value.toUpperCase())}
-                    placeholder="Enter 15-character GSTIN"
-                    autoComplete="off"
-                    maxLength={15}
-                  />
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                    {gstChecking ? <span className="text-white/42">Validating against GSTN…</span> : null}
-                    {gstLookup?.valid ? (
-                      <span className="rounded bg-[#7dc890]/18 px-2 py-0.5 font-semibold uppercase tracking-wide text-[#bce8c5]">
-                        Valid
-                      </span>
-                    ) : null}
-                    {gstLookup && !gstLookup.valid ? (
-                      <span className="text-red-300">{gstLookup.message}</span>
-                    ) : null}
-                    {gstLookup?.valid ? <span className="text-white/42">{gstLookup.message}</span> : null}
-                  </div>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div>
+                <Input
+                  id="gstin"
+                  label="GSTIN"
+                  value={gstin}
+                  onChange={(event) => setGstin(event.target.value.toUpperCase())}
+                  placeholder="Enter 15-character GSTIN"
+                  autoComplete="off"
+                  maxLength={15}
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  {gstChecking ? <span className="text-white/42">Validating against GSTN...</span> : null}
+                  {gstLookup?.valid ? (
+                    <span className="rounded bg-[#7dc890]/18 px-2 py-0.5 font-semibold uppercase tracking-wide text-[#bce8c5]">
+                      Valid
+                    </span>
+                  ) : null}
+                  {gstLookup && !gstLookup.valid ? <span className="text-red-300">{gstLookup.message}</span> : null}
+                  {gstLookup?.valid ? <span className="text-white/42">{gstLookup.message}</span> : null}
                 </div>
-                <Input
-                  id="pan"
-                  label="PAN"
-                  value={pan}
-                  onChange={(e) => setPan(e.target.value.toUpperCase())}
-                  maxLength={10}
-                />
               </div>
+              <Input
+                id="pan"
+                label="PAN"
+                value={pan}
+                onChange={(event) => setPan(event.target.value.toUpperCase())}
+                maxLength={10}
+              />
+            </div>
 
-              <label className="block text-sm text-white/72" htmlFor="address">
-                <span className="mb-2 block font-medium">Billing address</span>
-                <textarea
-                  id="address"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Building, street, locality — include 6-digit pincode"
-                  className="min-h-24 w-full rounded-md border border-white/12 bg-black/35 px-4 py-3 text-base text-white outline-none transition focus:border-[#7dc890]"
-                />
-                {locationResolving ? (
-                  <span className="mt-2 block text-xs text-white/42">Reading pincode from address…</span>
-                ) : null}
-              </label>
+            <label className="block text-sm text-white/72" htmlFor="address">
+              <span className="mb-2 block font-medium">Billing address</span>
+              <textarea
+                id="address"
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
+                placeholder="Building, street, locality - include 6-digit pincode"
+                className="min-h-24 w-full appearance-none rounded-md border border-white/15 bg-[#111a13] px-4 py-3 text-[16px] text-white outline-none [color-scheme:dark] transition placeholder:text-white/35 focus:border-[#7dc890] focus:ring-2 focus:ring-[#7dc890]/25"
+              />
+              {locationResolving ? <span className="mt-2 block text-xs text-white/42">Reading pincode from address...</span> : null}
+            </label>
 
-              <div className="grid gap-5 sm:grid-cols-3">
-                <Input
+            <div className="grid gap-5 sm:grid-cols-3">
+              <label className="block text-sm text-white/80" htmlFor="state">
+                <span className="mb-2 block font-medium">State - place of supply</span>
+                <Select
                   id="state"
-                  label="State — place of supply"
-                  value={stateName}
-                  readOnly
-                />
-                <Input
-                  id="postal"
-                  label="Postal code"
-                  value={postalCode}
-                  readOnly
-                />
-                <Input id="country" label="Country" value={country} readOnly />
-              </div>
+                  className="w-full"
+                  value={stateCode}
+                  onChange={(event) => {
+                    const code = event.target.value;
+                    setStateCode(code);
+                    setStateName(code ? stateNameFromCode(code) : "");
+                  }}
+                >
+                  <option value="">Select state</option>
+                  {INDIAN_STATES.map((state) => (
+                    <option key={state.code} value={state.code}>
+                      {state.name}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <Input
+                id="postal"
+                label="Postal code"
+                value={postalCode}
+                onChange={(event) => setPostalCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="6-digit pincode"
+                inputMode="numeric"
+                maxLength={6}
+              />
+              <Input
+                id="country"
+                label="Country"
+                value={country}
+                onChange={(event) => setCountry(event.target.value)}
+                placeholder="India"
+              />
+            </div>
 
+            <Button className="w-full" disabled={isPaying} type="submit">
+              {isPaying
+                ? "Processing..."
+                : purchaseMode === "trial"
+                  ? `Authorize ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} & start trial`
+                  : `Pay ${formatCurrency(totals.total)} & activate`}
+            </Button>
+          </form>
+        )}
+      </section>
 
-
-              {!organizationId ? (
-                <Alert tone="info">
-                  No organization found.{" "}
-                  <a href={buildSignInForCheckout({ plan: plan.slug, seats, cycle })} className="underline">
-                    Sign in again
-                  </a>{" "}
-                  with OTP or password to continue.
-                </Alert>
-              ) : null}
-
-              {!gstVerified && gstin.length === 15 && !gstChecking ? (
-                <Alert tone="info">GSTIN must show Valid before you can pay.</Alert>
-              ) : null}
-              {gstVerified && address.trim() && !postalCode && !locationResolving ? (
-                <Alert tone="info">Add a 6-digit pincode in your billing address for tax calculation.</Alert>
-              ) : null}
-
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button className="flex-1" disabled={isPaying || !canPay} type="button" onClick={() => void handlePay("trial")}>
-                  {gstChecking
-                    ? "Validating GSTIN…"
-                    : isPaying
-                      ? "Processing..."
-                      : !gstVerified
-                        ? "Verify GSTIN to continue"
-                        : "Start 14-day Free Trial"}
-                </Button>
-                <Button className="flex-1" disabled={isPaying || !canPay} type="button" onClick={() => void handlePay("subscription")}>
-                  {gstChecking
-                    ? "Validating GSTIN…"
-                    : isPaying
-                      ? "Processing..."
-                      : !gstVerified
-                        ? "Verify GSTIN to continue"
-                        : `Pay ${formatCurrency(totals.total)} & activate`}
-                </Button>
-              </div>
-            </form>
-          )}
-        </section>
-
-        <OrderSummaryPanel
-          plan={plan}
-          seats={seats}
-          cycle={cycle}
-          subtotal={totals.subtotal}
-          tax={totals.tax}
-          total={totals.total}
-          basePrice={totals.basePrice}
-          perUserPrice={totals.perUser}
-          overageSeats={totals.overageSeats}
-          setupFee={totals.setupFee}
-          onSeatsChange={(next) => setSeats(Math.max(MIN_SEATS, next))}
-          onCycleChange={setCycle}
-          className="order-1 lg:order-2"
-        />
-      </div>
-    </>
+      <OrderSummaryPanel
+        plan={plan}
+        seats={resolvedSeats}
+        cycle={cycle}
+        subtotal={totals.subtotal}
+        tax={totals.tax}
+        total={totals.total}
+        basePrice={totals.basePrice}
+        perUserPrice={totals.perUser}
+        overageSeats={totals.overageSeats}
+        setupFee={totals.setupFee}
+        minimumSeats={minimumSeats}
+        maximumSeats={maximumSeats}
+        purchaseMode={purchaseMode}
+        onSeatsChange={(next) => setSeats(clampSeats(next, minimumSeats, maximumSeats))}
+        onCycleChange={setCycle}
+        className="order-1 lg:order-2"
+      />
+    </div>
   );
 }

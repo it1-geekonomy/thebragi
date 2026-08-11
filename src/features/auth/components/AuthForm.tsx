@@ -9,47 +9,34 @@ import * as yup from "yup";
 import { toast } from "sonner";
 import { ROUTES } from "@/config/routes";
 import { useAppDispatch } from "@/store/hooks";
-import { selectPlan, setMockSession, type AppDispatch } from "@/store";
-import { fetchAuthSessionDetails, getPostAuthDestination } from "@/features/auth/lib/post-auth-routing";
-
-import { createTrialWindow } from "@/features/auth/lib/trial-dates";
+import {
+  getPostAuthDestination,
+  sanitizeReturnTo,
+} from "@/features/auth/lib/post-auth-routing";
+import { applyPendingSession, initAuthSession, type AuthResponse } from "@/features/auth/lib/auth-session";
 import { apiClient } from "@/shared/lib/api-client";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
-import { Select } from "@/shared/components/ui/Select";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { cn } from "@/shared/lib/cn";
 import { SignUpMultiStep } from "./SignUpMultiStep";
+import { getApiErrorMessage } from "@/shared/lib/api-client";
 import { useSubscriptionPlans, type DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
 import { BackButton } from "@/shared/components/ui/BackButton";
-
-const INDUSTRIES = [
-  "Technology",
-  "Professional services",
-  "Manufacturing",
-  "Retail & ecommerce",
-  "Healthcare",
-  "Education",
-  "Other",
-];
-
-const signUpSchema = yup.object({
-  fullName: yup.string().trim().required("Full name is required."),
-  email: yup.string().email("Enter a valid Email.").required("Email is required."),
-  company: yup.string().trim().required("Company name is required."),
-  industry: yup.string().required("Select an industry."),
-  password: yup.string().min(8, "Use at least 8 characters.").required("Password is required."),
-});
 
 const passwordSchema = yup.object({
   email: yup.string().email("Enter a valid email.").required("Email is required."),
   password: yup.string().min(8, "Use at least 8 characters.").required("Password is required."),
 });
 
-type SignUpValues = yup.InferType<typeof signUpSchema>;
 type PasswordValues = yup.InferType<typeof passwordSchema>;
 type AuthMode = "signin" | "signup";
+function getPurchaseMode(returnTo: string, purchaseMode?: string | null) {
+  if (purchaseMode === "trial" || purchaseMode === "buy_now") return purchaseMode;
+  if (!returnTo.startsWith("/checkout")) return null;
+  return new URLSearchParams(returnTo.split("?")[1] ?? "").get("mode");
+}
 
 function trialEndsLabel() {
   const date = new Date();
@@ -57,77 +44,21 @@ function trialEndsLabel() {
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function authHref(mode: AuthMode, plan?: string | null, returnTo?: string | null) {
+function authHref(
+  mode: AuthMode,
+  plan?: string | null,
+  returnTo?: string | null,
+  purchaseMode?: string | null,
+) {
   const params = new URLSearchParams();
   if (mode === "signup") params.set("mode", "signup");
   if (plan) params.set("plan", plan);
   if (returnTo) params.set("returnTo", returnTo);
+  if (purchaseMode === "trial" || purchaseMode === "buy_now") params.set("purchaseMode", purchaseMode);
   const query = params.toString();
   return query ? `${ROUTES.signIn}?${query}` : ROUTES.signIn;
 }
 
-
-async function initAuthSession(
-  dispatch: AppDispatch,
-  data: { accessToken?: string; user?: any; requires_org_selection?: boolean; session_key?: string; orgs?: { id: string }[] },
-  email: string,
-  isNewSignup: boolean = false,
-) {
-  await applyAuthSession(dispatch, data, email);
-
-  const token = localStorage.getItem("accessToken") ?? "";
-  const sessionDetails = await fetchAuthSessionDetails(token);
-
-  dispatch(
-    setMockSession({
-      isNewSignup,
-      subscriptionStatus: sessionDetails.subscriptionStatus,
-      activePlan: sessionDetails.activePlan,
-      organizationId: sessionDetails.organizationId,
-    }),
-  );
-
-  return sessionDetails;
-}
-
-async function applyAuthSession(
-  dispatch: AppDispatch,
-  data: { accessToken?: string; user?: any; requires_org_selection?: boolean; session_key?: string; orgs?: { id: string }[] },
-  email: string,
-) {
-  const rawToken = (data.accessToken ?? "").replace(/^Bearer\s+/i, "");
-  localStorage.setItem("accessToken", rawToken);
-
-  if (data.requires_org_selection) {
-    const orgs = data.orgs ?? [];
-    const selected = await apiClient<{ accessToken: string; user: any }>("/auth/select-organization", {
-      method: "POST",
-      body: JSON.stringify({ sessionKey: data.session_key, organizationId: orgs[0]?.id }),
-    });
-    const selectedToken = (selected.accessToken ?? "").replace(/^Bearer\s+/i, "");
-    localStorage.setItem("accessToken", selectedToken);
-    dispatch(
-      setMockSession({
-        isAuthenticated: true,
-        userEmail: email,
-        userName: selected.user?.name ?? email.split("@")[0],
-        scope: "full",
-        organizationId: selected.user?.organizationId ?? orgs[0]?.id,
-      }),
-    );
-    return;
-  }
-
-  dispatch(
-    setMockSession({
-      isAuthenticated: true,
-      userEmail: email,
-      userName: data.user?.name ?? email.split("@")[0],
-      scope: "full",
-      organizationId: data.user?.organizationId ?? null,
-    }),
-  );
-}
 
 function PasswordMode({ returnTo }: { returnTo: string }) {
   const dispatch = useAppDispatch();
@@ -135,7 +66,6 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors, isSubmitting },
   } = useForm<PasswordValues>({
     resolver: yupResolver(passwordSchema),
@@ -147,11 +77,32 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
       className="grid gap-5"
         onSubmit={handleSubmit(async (values) => {
           try {
-            const data = await apiClient<{ accessToken: string; user: any }>("/auth/login", {
+            const data = await apiClient<AuthResponse>("/auth/login", {
               method: "POST",
               body: JSON.stringify({ email: values.email, password: values.password }),
             });
-            const sessionDetails = await initAuthSession(dispatch, data as any, values.email, false);
+
+            if (data.code === "PAYMENT_PENDING") {
+              applyPendingSession(dispatch, {
+                fullName: data.user?.name || values.email.split("@")[0],
+                email: values.email,
+                company: data.user?.company || values.email,
+                industry: "",
+                password: values.password,
+                resume: true,
+              });
+              toast.success("Signed in. Choose a plan to activate your workspace.");
+              router.push(
+                getPostAuthDestination({
+                  isNewSignup: false,
+                  subscriptionStatus: "none",
+                  returnTo,
+                }),
+              );
+              return;
+            }
+
+            const sessionDetails = await initAuthSession(dispatch, data, values.email, false);
             
             router.push(
               getPostAuthDestination({
@@ -162,13 +113,13 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
               }),
             );
             toast.success("Signed in successfully.");
-          } catch (err: any) {
-            toast.error(err.message || "Invalid email or password.");
+          } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, "Invalid email or password."));
           }
         })}
     >
-      <Input id="signin-email" label="Email" type="email" autoComplete="email" error={errors.email?.message} {...register("email")} />
-      <Input id="signin-password" label="Password" type="password" autoComplete="current-password" error={errors.password?.message} {...register("password")} />
+      <Input id="signin-email" label="Email" type="email" autoComplete="email" placeholder="you@company.com" error={errors.email?.message} {...register("email")} />
+      <Input id="signin-password" label="Password" type="password" autoComplete="current-password" placeholder="Enter your password" error={errors.password?.message} {...register("password")} />
       
       <div className="flex items-center justify-end -mt-2">
         <Link 
@@ -187,19 +138,15 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
 }
 
 
-function SignInPanel({ returnTo, modeHref }: { returnTo: string; modeHref: (mode: AuthMode) => string }) {
+function SignInPanel({ returnTo, modeHref, hasPlan }: { returnTo: string; modeHref: (mode: AuthMode) => string; hasPlan: boolean }) {
   return (
     <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6 sm:p-8">
       <BragiLogo />
       <h1 className="mt-6 text-3xl font-semibold text-white sm:text-4xl">Sign in to Bragi</h1>
       <p className="mt-3 text-sm text-white/58">
         No account yet?{" "}
-        <Link className="font-semibold text-[#a8dfb3] hover:text-white" href={modeHref("signup")}>
+        <Link className="font-semibold text-[#a8dfb3] hover:text-white" href={hasPlan ? modeHref("signup") : ROUTES.pricing} replace={hasPlan}>
           Create account
-        </Link>
-        {" · "}
-        <Link className="font-semibold text-[#a8dfb3] hover:text-white" href={ROUTES.pricing}>
-          Choose a plan
         </Link>
       </p>
 
@@ -217,8 +164,21 @@ function SignInPanel({ returnTo, modeHref }: { returnTo: string; modeHref: (mode
 }
 
 
-function PlanSummaryAside({ plan, buyNow }: { plan: DynamicPlan | null; buyNow?: boolean }) {
+function PlanSummaryAside({
+  plan,
+  buyNow,
+  billingCycle = "annual",
+}: {
+  plan: DynamicPlan | null;
+  buyNow?: boolean;
+  billingCycle?: "monthly" | "annual";
+}) {
   if (!plan) return null;
+
+  const isAnnual = billingCycle === "annual";
+  const basePrice = isAnnual ? plan.priceAnnual : plan.priceMonthly;
+  const perUser = isAnnual ? plan.perUserCostAnnual : plan.perUserCostMonthly;
+  const period = isAnnual ? "/yr" : "/mo";
 
   return (
     <aside className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
@@ -237,11 +197,17 @@ function PlanSummaryAside({ plan, buyNow }: { plan: DynamicPlan | null; buyNow?:
           <>
             <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
               <dt className="text-white/48">Base Price</dt>
-              <dd className="font-medium text-white/84">{formatCurrency(plan.priceMonthly)}/mo</dd>
+              <dd className="font-medium text-white/84">
+                {formatCurrency(basePrice)}
+                {period}
+              </dd>
             </div>
             <div className="flex items-center justify-between gap-3">
               <dt className="text-white/48">Additional Users</dt>
-              <dd className="font-medium text-white/84">+{formatCurrency(plan.perUserCostMonthly)}/mo per user</dd>
+              <dd className="font-medium text-white/84">
+                +{formatCurrency(perUser)}
+                {period} per user
+              </dd>
             </div>
           </>
         ) : (
@@ -252,11 +218,17 @@ function PlanSummaryAside({ plan, buyNow }: { plan: DynamicPlan | null; buyNow?:
             </div>
             <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
               <dt className="text-white/48">Then (Base)</dt>
-              <dd className="font-medium text-white/84">{formatCurrency(plan.priceMonthly)}/mo</dd>
+              <dd className="font-medium text-white/84">
+                {formatCurrency(basePrice)}
+                {period}
+              </dd>
             </div>
             <div className="flex items-center justify-between gap-3">
               <dt className="text-white/48">Additional Users</dt>
-              <dd className="font-medium text-white/84">+{formatCurrency(plan.perUserCostMonthly)}/mo per user</dd>
+              <dd className="font-medium text-white/84">
+                +{formatCurrency(perUser)}
+                {period} per user
+              </dd>
             </div>
           </>
         )}
@@ -265,7 +237,7 @@ function PlanSummaryAside({ plan, buyNow }: { plan: DynamicPlan | null; buyNow?:
       <p className="mt-6 text-xs leading-5 text-white/38">
         {buyNow
           ? "After sign-in you’ll confirm billing & GST details, then pay. Plan selection is preserved."
-          : "No card required. We’ll remind you 3 days before the trial ends. Your data stays for 30 days after expiry."}
+          : "After account creation you’ll confirm billing & GST, then authorize INR 1 to start the trial."}
       </p>
 
       <Link className="mt-5 inline-flex text-sm font-semibold text-[#a8dfb3] hover:text-white" href={ROUTES.pricing}>
@@ -307,15 +279,16 @@ function GoogleMark() {
 }
 
 function AuthFormContent() {
-  const dispatch = useAppDispatch();
   const searchParams = useSearchParams();
   const { plans, loading } = useSubscriptionPlans();
   const mode: AuthMode = searchParams.get("mode") === "signup" ? "signup" : "signin";
   const planSlug = searchParams.get("plan");
   const plan = plans.find((p) => p.slug === planSlug) || null;
-  const returnTo = searchParams.get("returnTo") || ROUTES.dashboard;
-  const buyNow = returnTo.startsWith("/checkout");
-  const modeHref = (next: AuthMode) => authHref(next, planSlug, searchParams.get("returnTo"));
+  const returnTo = sanitizeReturnTo(searchParams.get("returnTo")) || ROUTES.dashboard;
+  const purchaseMode = getPurchaseMode(returnTo, searchParams.get("purchaseMode"));
+  const buyNow = purchaseMode === "buy_now";
+  const billingCycle = searchParams.get("cycle") === "monthly" ? "monthly" : "annual";
+  const modeHref = (next: AuthMode) => authHref(next, planSlug, searchParams.get("returnTo"), purchaseMode);
   const showPlan = Boolean(plan);
 
   if (loading) {
@@ -333,22 +306,16 @@ function AuthFormContent() {
       </div>
       <div className="mb-8">
         <div className="inline-flex items-center gap-3">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm font-semibold text-black">2</span>
           <p className="text-sm font-semibold text-white">{mode === "signup" ? "Create account" : "Sign in"}</p>
         </div>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-white/48">
-          {buyNow
-            ? "Sign in or create an account to continue to billing. Your plan selection is saved."
-            : mode === "signup"
-              ? showPlan
-                ? "Industry is asked because it drives the preset recommendation later — not for your marketing database."
-                : "Create your account, then pick a plan when you’re ready to start a trial."
-              : "Use your Bragi account to open the app, or create one after choosing a plan."}
+        <p className="mt-3 max-w-2xl text-base leading-6 text-white/70">
+          Sign in or create an account to continue to billing. Your plan selection is saved.
         </p>
         {/* Removed duplicate back link */}
         <div className="mt-5 inline-flex rounded-full border border-white/12 bg-white/[0.04] p-1">
           <Link
             href={modeHref("signin")}
+            replace
             className={cn(
               "rounded-full px-4 py-2 text-sm font-semibold transition",
               mode === "signin" ? "bg-[#5f9965] text-white" : "text-white/58 hover:text-white",
@@ -358,6 +325,7 @@ function AuthFormContent() {
           </Link>
           <Link
             href={modeHref("signup")}
+            replace
             className={cn(
               "rounded-full px-4 py-2 text-sm font-semibold transition",
               mode === "signup" ? "bg-[#5f9965] text-white" : "text-white/58 hover:text-white",
@@ -370,16 +338,29 @@ function AuthFormContent() {
 
       <div className={cn("grid gap-8", showPlan ? "lg:grid-cols-[1.15fr_0.85fr] lg:items-start" : "max-w-xl")}>
         {mode === "signup" ? (
-          <SignUpMultiStep 
-            plan={plan} 
-            modeHref={modeHref} 
-            returnTo={returnTo} 
-            initSessionFn={(data, email, isNewSignup) => initAuthSession(dispatch, data, email, isNewSignup)} 
-          />
+          !showPlan ? (
+            <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6 sm:p-8 text-center">
+              <div className="flex justify-center">
+                <BragiLogo />
+              </div>
+              <h1 className="mt-6 text-2xl font-semibold text-white">Select a plan to start</h1>
+              <p className="mt-3 text-sm text-white/58 mb-6">
+                You need to choose a subscription plan before creating an account.
+              </p>
+              <Link
+                href={ROUTES.pricing}
+                className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-5 py-3 text-sm font-semibold text-white hover:bg-[#6bad72]"
+              >
+                See plans
+              </Link>
+            </section>
+          ) : (
+            <SignUpMultiStep plan={plan} modeHref={modeHref} returnTo={returnTo} />
+          )
         ) : (
-          <SignInPanel returnTo={returnTo} modeHref={modeHref} />
+          <SignInPanel returnTo={returnTo} modeHref={modeHref} hasPlan={showPlan} />
         )}
-        {showPlan ? <PlanSummaryAside plan={plan} buyNow={buyNow} /> : null}
+        {showPlan ? <PlanSummaryAside plan={plan} buyNow={buyNow} billingCycle={billingCycle} /> : null}
       </div>
     </div>
   );

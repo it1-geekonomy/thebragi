@@ -17,8 +17,8 @@ export function HeroSection() {
         </h1>
         <p className="mx-auto mt-6 max-w-[820px] text-sm leading-[1.75] text-white/62 sm:text-base lg:text-[22px]">Built for founders who are done running their business from <strong className="font-normal text-white/88">five different tools and a prayer.</strong> Bragi connects sales and delivery end to end.</p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <CTAButton href={ROUTES.pricing}>See all plans</CTAButton>
-          <CTAButton href="#waitlist" variant="secondary">Join early access</CTAButton>
+          <CTAButton href={ROUTES.pricing}>Start free trial</CTAButton>
+          <CTAButton href={ROUTES.pricing} variant="secondary">See plans & buy</CTAButton>
         </div>
       </div>
     </section>

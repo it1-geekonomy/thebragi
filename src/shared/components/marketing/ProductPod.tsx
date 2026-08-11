@@ -7,7 +7,7 @@ import { useAppSelector } from "@/store/hooks";
 import { ROUTES } from "@/config/routes";
 
 export function ProductPod({ product }: { product: { title: string; description: string; href: string; checkoutPlan: string; image: string } }) {
-  const activePlan = useAppSelector((state) => state.session.activePlan);
+  const { activePlan, isAuthenticated } = useAppSelector((state) => state.session);
   const isCurrentPlan = activePlan === product.checkoutPlan;
   return (
     <Card className="grid gap-5 overflow-hidden p-5">
@@ -23,7 +23,28 @@ export function ProductPod({ product }: { product: { title: string; description:
         {isCurrentPlan ? (
           <span className="text-sm font-semibold text-white/40 cursor-default">Current plan</span>
         ) : (
-          <Link className="text-sm font-semibold text-white/84 hover:text-white" href={ROUTES.checkout(product.checkoutPlan)}>Buy now</Link>
+          <>
+            <Link
+              className="text-sm font-semibold text-white/84 hover:text-white"
+              href={
+                isAuthenticated
+                  ? ROUTES.checkout(product.checkoutPlan, { mode: "trial" })
+                  : ROUTES.signUp(product.checkoutPlan)
+              }
+            >
+              Start trial
+            </Link>
+            <Link
+              className="text-sm font-semibold text-white/84 hover:text-white"
+              href={
+                isAuthenticated
+                  ? ROUTES.checkout(product.checkoutPlan, { mode: "buy_now" })
+                  : ROUTES.signUp(product.checkoutPlan, { mode: "buy_now" })
+              }
+            >
+              Buy now
+            </Link>
+          </>
         )}
       </div>
     </Card>

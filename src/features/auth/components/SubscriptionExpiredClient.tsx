@@ -6,18 +6,32 @@ import { useEffect } from "react";
 import { ROUTES } from "@/config/routes";
 import { Button } from "@/shared/components/ui/Button";
 import { useAppSelector } from "@/store/hooks";
+import { getPostAuthDestination } from "@/features/auth/lib/post-auth-routing";
 
 export function SubscriptionExpiredClient() {
   const router = useRouter();
-  const isAuthenticated = useAppSelector((state) => state.session.isAuthenticated);
+  const { isAuthenticated, subscriptionStatus, activePlan, isNewSignup } = useAppSelector(
+    (state) => state.session,
+  );
 
   useEffect(() => {
     if (!isAuthenticated) {
       router.replace(ROUTES.signIn);
+      return;
     }
-  }, [isAuthenticated, router]);
+    // Never-subscribed / active users must not see the "expired" copy
+    if (subscriptionStatus !== null && subscriptionStatus !== "expired") {
+      router.replace(
+        getPostAuthDestination({
+          isNewSignup,
+          subscriptionStatus,
+          activePlan,
+        }),
+      );
+    }
+  }, [isAuthenticated, subscriptionStatus, activePlan, isNewSignup, router]);
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || subscriptionStatus !== "expired") {
     return null;
   }
 
