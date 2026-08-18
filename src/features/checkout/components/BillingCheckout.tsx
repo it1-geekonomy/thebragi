@@ -46,8 +46,8 @@ import { OrderSummaryPanel } from "@/features/checkout/components/OrderSummaryPa
 import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
 import { fetchAuthSessionDetails } from "@/features/auth/lib/post-auth-routing";
 
-// ponytail: GSTN lookup skipped for local checkout testing
-const SKIP_GST_VALIDATION = false;
+// GSTN live lookup disabled until GST_VALIDATION_API_KEY is configured on the CRM backend.
+const SKIP_GST_VALIDATION = true;
 
 function syncCheckoutUrl(params: CheckoutParams) {
   const path = buildCheckoutPath(params);
@@ -271,6 +271,9 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         toast.error("Unable to verify GSTIN right now.");
         return;
       }
+    } else if (normalizedGstin.length !== 15) {
+      toast.error("Enter a 15-character GSTIN.");
+      return;
     }
 
     const finalLegalName = legalName.trim() || verified?.legalName.trim() || "";
@@ -445,6 +448,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
             const verified = await paymentApi.verifyTrialAuth({
               ...response,
               pendingTrialId,
+              billing,
             });
             paidOrganizationId = verified.organizationId ?? paidOrganizationId;
           } else {
@@ -453,6 +457,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
               ...(organizationId ? { organizationId } : { pendingTrialId }),
               planId: plan.id,
               seats: resolvedSeats,
+              billing,
             });
             paidOrganizationId = verified.organizationId ?? paidOrganizationId;
           }
@@ -536,8 +541,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           </h1>
           <p className="mt-2 text-sm leading-6 text-white/58">
             {purchaseMode === "trial"
-              ? `GSTIN validates legal name and PAN from GSTN. This path authorizes only ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} for trial activation.`
-              : "GSTIN validates legal name and PAN from GSTN. The backend receives plan, seats, billing cycle, and billing details before Razorpay is opened."}
+              ? `Enter billing details manually. This path authorizes only ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} for trial activation.`
+              : "Enter billing details manually. The backend receives plan, seats, billing cycle, and billing details before Razorpay is opened."}
           </p>
         </div>
 
@@ -559,7 +564,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
               label="Registered legal name"
               value={legalName}
               onChange={(event) => setLegalName(event.target.value)}
-              placeholder="Auto-filled from GSTIN, or type manually"
+              placeholder={SKIP_GST_VALIDATION ? "Registered company legal name" : "Auto-filled from GSTIN, or type manually"}
             />
 
             <div className="grid gap-5 sm:grid-cols-2">
@@ -574,14 +579,20 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                   maxLength={15}
                 />
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  {gstChecking ? <span className="text-white/42">Validating against GSTN...</span> : null}
-                  {gstLookup?.valid ? (
+                  {!SKIP_GST_VALIDATION && gstChecking ? (
+                    <span className="text-white/42">Validating against GSTN...</span>
+                  ) : null}
+                  {!SKIP_GST_VALIDATION && gstLookup?.valid ? (
                     <span className="rounded bg-[#7dc890]/18 px-2 py-0.5 font-semibold uppercase tracking-wide text-[#bce8c5]">
                       Valid
                     </span>
                   ) : null}
-                  {gstLookup && !gstLookup.valid ? <span className="text-red-300">{gstLookup.message}</span> : null}
-                  {gstLookup?.valid ? <span className="text-white/42">{gstLookup.message}</span> : null}
+                  {!SKIP_GST_VALIDATION && gstLookup && !gstLookup.valid ? (
+                    <span className="text-red-300">{gstLookup.message}</span>
+                  ) : null}
+                  {!SKIP_GST_VALIDATION && gstLookup?.valid ? (
+                    <span className="text-white/42">{gstLookup.message}</span>
+                  ) : null}
                 </div>
               </div>
               <Input
