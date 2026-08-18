@@ -44,6 +44,7 @@ export interface TrialVerificationRequest {
   razorpay_order_id: string;
   razorpay_payment_id: string;
   razorpay_signature: string;
+  billing?: BillingPayload;
 }
 
 export type AutoPaySubscriptionRequest = TrialAuthRequest;
@@ -99,6 +100,7 @@ export interface BuyNowVerificationRequest {
   razorpay_order_id: string;
   razorpay_payment_id: string;
   razorpay_signature: string;
+  billing?: BillingPayload;
 }
 
 export interface Plan {
