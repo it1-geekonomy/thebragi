@@ -19,6 +19,7 @@ export const paymentApi = {
     industry?: string;
     adminPassword: string;
     planId: string;
+    phone: string;
     billingCycle?: "monthly" | "annual";
   }) => {
     return apiClient<{

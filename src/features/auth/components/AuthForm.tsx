@@ -138,27 +138,21 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
 }
 
 
-function SignInPanel({ returnTo, modeHref, hasPlan }: { returnTo: string; modeHref: (mode: AuthMode) => string; hasPlan: boolean }) {
+function SignInPanel({ returnTo, modeHref }: { returnTo: string; modeHref: (mode: AuthMode) => string }) {
   return (
     <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6 sm:p-8">
       <BragiLogo />
       <h1 className="mt-6 text-3xl font-semibold text-white sm:text-4xl">Sign in to Bragi</h1>
       <p className="mt-3 text-sm text-white/58">
         No account yet?{" "}
-        <Link className="font-semibold text-[#a8dfb3] hover:text-white" href={hasPlan ? modeHref("signup") : ROUTES.pricing} replace={hasPlan}>
+        <Link className="font-semibold text-[#a8dfb3] hover:text-white" href={modeHref("signup")} replace>
           Create account
         </Link>
       </p>
 
-      <GoogleButton label="Continue with Google" />
-
-      <div className="my-6 flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.2em] text-white/28">
-        <span className="h-px flex-1 bg-white/10" />
-        or
-        <span className="h-px flex-1 bg-white/10" />
+      <div className="mt-6">
+        <PasswordMode returnTo={returnTo} />
       </div>
-
-      <PasswordMode returnTo={returnTo} />
     </section>
   );
 }
@@ -247,36 +241,7 @@ function PlanSummaryAside({
   );
 }
 
-function GoogleButton({ label }: { label: string }) {
-  const [pending, setPending] = useState(false);
-  return (
-    <Button
-      type="button"
-      variant="secondary"
-      className="mt-6 w-full gap-2"
-      disabled={pending}
-      onClick={() => {
-        setPending(true);
-        toast.message("Google sign-in is not wired yet.");
-        setTimeout(() => setPending(false), 600);
-      }}
-    >
-      <GoogleMark />
-      {label}
-    </Button>
-  );
-}
 
-function GoogleMark() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-      <path fill="#EA4335" d="M9 7.2v3.5h4.9c-.2 1.1-.8 2-1.7 2.6l2.8 2.2c1.6-1.5 2.6-3.7 2.6-6.3 0-.6-.1-1.2-.2-1.8H9z" />
-      <path fill="#34A853" d="M4.1 10.7l-.6.5-2.2 1.7C2.7 15.3 5.6 17.2 9 17.2c2.4 0 4.4-.8 5.9-2.2l-2.8-2.2c-.8.5-1.8.9-3.1.9-2.4 0-4.4-1.6-5.1-3.8z" />
-      <path fill="#4A90E2" d="M1.3 5.1C.8 6.1.5 7.3.5 8.6c0 1.3.3 2.5.8 3.5l2.8-2.2c-.2-.5-.3-1-.3-1.5s.1-1 .3-1.5L1.3 5.1z" />
-      <path fill="#FBBC05" d="M9 3.5c1.3 0 2.5.5 3.4 1.3l2.5-2.5C13.4.9 11.4 0 9 0 5.6 0 2.7 1.9 1.3 4.7l2.8 2.2C4.6 5.1 6.6 3.5 9 3.5z" />
-    </svg>
-  );
-}
 
 function AuthFormContent() {
   const searchParams = useSearchParams();
@@ -338,27 +303,9 @@ function AuthFormContent() {
 
       <div className={cn("grid gap-8", showPlan ? "lg:grid-cols-[1.15fr_0.85fr] lg:items-start" : "max-w-xl")}>
         {mode === "signup" ? (
-          !showPlan ? (
-            <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6 sm:p-8 text-center">
-              <div className="flex justify-center">
-                <BragiLogo />
-              </div>
-              <h1 className="mt-6 text-2xl font-semibold text-white">Select a plan to start</h1>
-              <p className="mt-3 text-sm text-white/58 mb-6">
-                You need to choose a subscription plan before creating an account.
-              </p>
-              <Link
-                href={ROUTES.pricing}
-                className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-5 py-3 text-sm font-semibold text-white hover:bg-[#6bad72]"
-              >
-                See plans
-              </Link>
-            </section>
-          ) : (
-            <SignUpMultiStep plan={plan} modeHref={modeHref} returnTo={returnTo} />
-          )
+          <SignUpMultiStep plan={plan} modeHref={modeHref} returnTo={returnTo} />
         ) : (
-          <SignInPanel returnTo={returnTo} modeHref={modeHref} hasPlan={showPlan} />
+          <SignInPanel returnTo={returnTo} modeHref={modeHref} />
         )}
         {showPlan ? <PlanSummaryAside plan={plan} buyNow={buyNow} billingCycle={billingCycle} /> : null}
       </div>
