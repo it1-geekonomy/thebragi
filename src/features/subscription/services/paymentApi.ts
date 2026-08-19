@@ -40,6 +40,8 @@ export const paymentApi = {
     superAdminName?: string;
     industry?: string;
     adminPassword?: string;
+    phone?: string;
+    city?: string;
     planId: string;
     seats?: number;
     billingCycle?: "monthly" | "annual";
@@ -117,3 +119,4 @@ export const paymentApi = {
     return apiClient("/organization-profiles", { method: "POST", body: formData });
   },
 };
+

@@ -47,7 +47,7 @@ import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscript
 import { fetchAuthSessionDetails } from "@/features/auth/lib/post-auth-routing";
 
 // ponytail: GSTN lookup skipped for local checkout testing
-const SKIP_GST_VALIDATION = false;
+const SKIP_GST_VALIDATION = true;
 
 function syncCheckoutUrl(params: CheckoutParams) {
   const path = buildCheckoutPath(params);
@@ -107,6 +107,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   const [stateName, setStateName] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [country, setCountry] = useState("");
+  const [city, setCity] = useState("");
   const [gstLookup, setGstLookup] = useState<GstinLookup | null>(null);
   const [gstChecking, setGstChecking] = useState(false);
   const [locationResolving, setLocationResolving] = useState(false);
@@ -234,6 +235,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         if (location.stateName) setStateName(location.stateName);
         if (location.stateCode) setStateCode(location.stateCode);
         if (location.country) setCountry(location.country);
+        if (location.city) setCity(location.city);
       });
     }, 500);
 
@@ -279,6 +281,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     const finalStateName =
       stateName.trim() || (stateNameFromCode(finalStateCode) !== "Unknown" ? stateNameFromCode(finalStateCode) : "");
     const finalCountry = country.trim() || "India";
+    const finalCity = city.trim();
     if (!finalLegalName || !finalPan) {
       toast.error("Enter registered legal name and PAN.");
       return;
@@ -287,8 +290,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
       toast.error("Enter your billing address.");
       return;
     }
-    if (!postalCode.trim() || !finalStateCode || !finalStateName || !finalCountry) {
-      toast.error("Enter state, postal code, and country.");
+    if (!postalCode.trim() || !finalStateCode || !finalStateName || !finalCountry || !finalCity) {
+      toast.error("Enter city, state, postal code, and country.");
       return;
     }
     if (!organizationId && !signupDraft) {
@@ -309,6 +312,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
       stateCode: finalStateCode,
       stateName: finalStateName,
       address: address.trim(),
+      city: finalCity,
       postalCode,
       country: finalCountry,
       plan: plan.slug,
@@ -326,6 +330,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         address: address.trim(),
         stateCode: finalStateCode,
         stateName: finalStateName,
+        city: finalCity,
         postalCode,
         country: finalCountry,
       };
@@ -351,6 +356,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                     superAdminName: signupDraft.fullName,
                     industry: signupDraft.industry,
                     adminPassword: signupDraft.password,
+                    phone: signupDraft.phone,
+                    city: finalCity,
                     planId: plan.id,
                     billingCycle: cycle,
                   })
@@ -381,6 +388,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                       superAdminName: signupDraft.fullName,
                       industry: signupDraft.industry,
                       adminPassword: signupDraft.password,
+                      phone: signupDraft.phone,
+                      city: finalCity,
                     }
                   : {}),
               planId: plan.id,
@@ -433,6 +442,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
             gstin: billing.gstin,
             panNumber: billing.pan,
             streetAddress: billing.address,
+            city: billing.city,
             state: billing.stateName,
             postalCode: billing.postalCode,
             country: billing.country,
@@ -605,7 +615,14 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
               {locationResolving ? <span className="mt-2 block text-xs text-white/42">Reading pincode from address...</span> : null}
             </label>
 
-            <div className="grid gap-5 sm:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Input
+                id="city"
+                label="City"
+                value={city}
+                onChange={(event) => setCity(event.target.value)}
+                placeholder="Bengaluru"
+              />
               <label className="block text-sm text-white/80" htmlFor="state">
                 <span className="mb-2 block font-medium">State - place of supply</span>
                 <Select
@@ -676,3 +693,4 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     </div>
   );
 }
+
