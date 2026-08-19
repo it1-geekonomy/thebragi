@@ -56,7 +56,10 @@ export function SignUpMultiStep({
   const resumingCheckout = returnTo.startsWith("/checkout");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const accountForm = useForm<AccountValues>({ resolver: yupResolver(accountSchema) });
+  const accountForm = useForm<AccountValues>({
+    resolver: yupResolver(accountSchema),
+    mode: "onChange",
+  });
 
   const onAccountSubmit = async (values: AccountValues) => {
     if (!plan && !resumingCheckout) {
