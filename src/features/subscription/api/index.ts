@@ -17,6 +17,8 @@ export interface PendingSignupFields {
   superAdminName: string;
   industry?: string;
   adminPassword: string;
+  phone?: string;
+  city?: string;
 }
 
 export interface TrialAuthRequest extends Partial<PendingSignupFields> {

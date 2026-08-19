@@ -39,6 +39,7 @@ export type ResolvedLocation = {
   stateName: string;
   stateCode: string;
   country: string;
+  city?: string;
 };
 
 type CacheEntry<T> = {
@@ -81,13 +82,14 @@ export async function resolveLocationFromAddress(
   try {
     const res = await fetch(`/api/postal-lookup?code=${encodeURIComponent(postalCode)}`);
     if (!res.ok) return { postalCode, stateName: "", stateCode: "", country: "" };
-    const data = (await res.json()) as { stateName?: string; countryName?: string };
+    const data = (await res.json()) as { stateName?: string; countryName?: string; city?: string };
     const stateName = data.stateName?.trim() ?? "";
     const result = {
       postalCode,
       stateName,
       stateCode: stateCodeFromName(stateName),
       country: data.countryName?.trim() ?? "",
+      city: data.city?.trim() ?? "",
     };
     if (isBrowser) {
       locationCache.set(postalCode, { value: result, expiresAt: Date.now() + LOCATION_CACHE_TTL_MS });
@@ -122,3 +124,4 @@ export function renewalDateLabel(cycle: "monthly" | "annual") {
   else date.setMonth(date.getMonth() + 1);
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
+

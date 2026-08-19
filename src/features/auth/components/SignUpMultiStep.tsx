@@ -34,6 +34,7 @@ const accountSchema = yup.object({
   email: yup.string().email("Enter a valid Email.").required("Email is required."),
   company: yup.string().trim().required("Company name is required."),
   industry: yup.string().required("Select an industry."),
+  phone: yup.string().trim().matches(/^\+?[0-9\s\-()]{10,15}$/, "Enter a valid phone number").required("Phone number is required."),
   password: yup.string().min(8, "Use at least 8 characters.").required("Password is required."),
 });
 
@@ -55,7 +56,10 @@ export function SignUpMultiStep({
   const resumingCheckout = returnTo.startsWith("/checkout");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const accountForm = useForm<AccountValues>({ resolver: yupResolver(accountSchema) });
+  const accountForm = useForm<AccountValues>({
+    resolver: yupResolver(accountSchema),
+    mode: "onChange",
+  });
 
   const onAccountSubmit = async (values: AccountValues) => {
     if (!plan && !resumingCheckout) {
@@ -79,6 +83,7 @@ export function SignUpMultiStep({
         industry: values.industry,
         adminPassword: values.password,
         planId: plan.id,
+        phone: values.phone,
       });
 
       applyPendingSession(dispatch, {
@@ -150,6 +155,13 @@ export function SignUpMultiStep({
             <span className="mt-2 block text-xs text-red-300">{accountForm.formState.errors.industry.message}</span>
           )}
         </label>
+        <Input
+          id="phone"
+          label="Phone number"
+          autoComplete="tel"
+          error={accountForm.formState.errors.phone?.message}
+          {...accountForm.register("phone")}
+        />
         <Input
           id="password"
           label="Password"

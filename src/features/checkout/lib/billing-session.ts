@@ -9,6 +9,7 @@ export type VerifiedBilling = {
   address: string;
   postalCode: string;
   country: string;
+  city?: string;
   plan: string;
   seats: number;
   cycle: BillingCycle;
@@ -42,6 +43,8 @@ export type SignupDraft = {
   company: string;
   industry: string;
   password: string;
+  phone?: string;
+  city?: string;
   resume?: boolean;
 };
 
