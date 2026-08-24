@@ -92,6 +92,16 @@ export const paymentApi = {
     razorpay_payment_id: string;
     razorpay_signature: string;
     pendingTrialId: string;
+    billing?: {
+      legalName: string;
+      gstin: string;
+      pan: string;
+      address: string;
+      stateCode: string;
+      stateName: string;
+      postalCode: string;
+      country: string;
+    };
   }) => {
     return apiClient<{ organizationId?: string }>("/razorpay/verify-trial-auth", {
       method: "POST",
@@ -115,7 +125,14 @@ export const paymentApi = {
     Object.entries(data).forEach(([key, value]) => {
       if (value !== undefined) formData.append(key, value);
     });
-    formData.append("organizationId", organizationId);
+
+    const existing = await apiClient<{ id: string }[]>("/organization-profiles").catch(() => []);
+    const profile = existing.find((p) => p.id) ?? existing[0];
+
+    if (profile?.id) {
+      return apiClient(`/organization-profiles/${profile.id}`, { method: "PATCH", body: formData });
+    }
+
     return apiClient("/organization-profiles", { method: "POST", body: formData });
   },
 

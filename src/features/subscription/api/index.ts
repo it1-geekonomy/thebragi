@@ -1,5 +1,108 @@
 import { apiClient } from "@/shared/lib/api-client";
 
+export interface BillingPayload {
+  legalName: string;
+  gstin: string;
+  pan: string;
+  address: string;
+  stateCode: string;
+  stateName: string;
+  postalCode: string;
+  country: string;
+}
+
+export interface PendingSignupFields {
+  name: string;
+  superAdminEmail: string;
+  superAdminName: string;
+  industry?: string;
+  adminPassword: string;
+  phone?: string;
+  city?: string;
+}
+
+export interface TrialAuthRequest extends Partial<PendingSignupFields> {
+  organizationId?: string;
+  planId: string;
+  seats: number;
+  billingCycle: "monthly" | "annual";
+  billing: BillingPayload;
+}
+
+export interface TrialAuthResponse {
+  id: string;
+  orderId?: string;
+  amount: number;
+  amountPaise?: number;
+  currency?: string;
+  keyId?: string;
+  pendingTrialId?: string;
+}
+
+export interface TrialVerificationRequest {
+  organizationId?: string;
+  pendingTrialId?: string;
+  planId: string;
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+export type AutoPaySubscriptionRequest = TrialAuthRequest;
+export type BuyNowOrderRequest = TrialAuthRequest;
+
+export interface CheckoutQuote {
+  baseUsers: number;
+  seatCount: number;
+  additionalSeats: number;
+  subtotal: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+  total: number;
+}
+
+export interface AutoPaySubscriptionResponse {
+  subscription_id?: string;
+  subscriptionId?: string;
+  amount?: number;
+  amountPaise?: number;
+  currency?: string;
+  keyId?: string;
+  quote?: CheckoutQuote;
+}
+
+export interface BuyNowOrderResponse {
+  id: string;
+  orderId: string;
+  amount: number;
+  amountPaise: number;
+  currency: string;
+  keyId: string;
+  seats?: number;
+  quote?: CheckoutQuote;
+  pendingTrialId?: string;
+}
+
+export interface SubscriptionVerificationRequest {
+  organizationId: string;
+  planId: string;
+  seats?: number;
+  razorpay_payment_id?: string;
+  razorpay_signature?: string;
+  razorpay_subscription_id?: string;
+}
+
+export interface BuyNowVerificationRequest {
+  organizationId?: string;
+  pendingTrialId?: string;
+  planId: string;
+  seats?: number;
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
 export interface Plan {
   id: string;
   name: string;
