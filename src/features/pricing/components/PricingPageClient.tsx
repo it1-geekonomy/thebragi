@@ -229,7 +229,14 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
 
         {selectedPlan ? (
           <div className="mx-auto mt-10 flex max-w-xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
-            {!hasAccount ? (
+            {selectedPlan.isEnterprise ? (
+              <Link
+                className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-5 py-3 text-sm font-semibold text-white hover:bg-[#6bad72] sm:w-auto sm:min-w-52"
+                href={ROUTES.enterprise}
+              >
+                Contact sales
+              </Link>
+            ) : !hasAccount ? (
               <>
                 <Link
                   className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-5 py-3 text-sm font-semibold text-white hover:bg-[#6bad72] sm:w-auto sm:min-w-52"

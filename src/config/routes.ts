@@ -10,6 +10,7 @@ export type { BillingCycle, CheckoutParams, PurchaseMode };
 export const ROUTES = {
   home: "/",
   pricing: "/pricing",
+  enterprise: "/enterprise",
   contact: "/contact",
   checkout: (plan: string, opts?: { users?: number; cycle?: BillingCycle; mode?: PurchaseMode }) =>
     buildCheckoutPath({ plan, users: opts?.users, cycle: opts?.cycle, mode: opts?.mode }),
