@@ -12,7 +12,7 @@ export default function PrivacyPage() {
         <div className="mt-8 grid gap-6 text-sm leading-7 text-white/64">
           <p>Bragi collects only the information needed to provide early access, account management, billing, and product support.</p>
           <p>Authentication and billing flows are designed around cookie-based sessions. Bragi does not require frontend JWT storage.</p>
-          <p>For privacy questions, contact hello@thebragi.com.</p>
+          <p>For privacy questions, contact connect@thegeekonomy.com.</p>
         </div>
       </main>
     </MarketingLayout>

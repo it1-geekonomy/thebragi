@@ -1,21 +1,33 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeftIcon } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 
 export function BackButton({ className, fallback = "/" }: { className?: string; fallback?: string }) {
   const router = useRouter();
+  const [canGoBack, setCanGoBack] = useState(false);
+
+  useEffect(() => {
+    // History length starts at 1 (Safari) or 2 (Chrome new tab).
+    // If > 2, there is definitely history in this tab.
+    // If === 2, check if they came from our own site.
+    const hasHistory = window.history.length > 2 || (window.history.length === 2 && document.referrer.includes(window.location.host));
+    setCanGoBack(hasHistory);
+  }, []);
 
   const handleBack = () => {
-    // If there is history and the previous page was on the same domain, go back safely
-    if (window.history.length > 1 && document.referrer.includes(window.location.host)) {
+    if (canGoBack) {
       router.back();
     } else {
-      // Otherwise fallback to a default route (like home) so we don't exit the app
       router.push(fallback);
     }
   };
+
+  if (!canGoBack) {
+    return null;
+  }
 
   return (
     <button

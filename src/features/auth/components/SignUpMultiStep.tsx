@@ -9,15 +9,19 @@ import * as yup from "yup";
 import { toast } from "sonner";
 import { ROUTES } from "@/config/routes";
 import { useAppDispatch } from "@/store/hooks";
-import { selectPlan } from "@/store";
-import { getApiErrorMessage } from "@/shared/lib/api-client";
-import { applyPendingSession } from "@/features/auth/lib/auth-session";
+import { apiClient, getApiErrorMessage } from "@/shared/lib/api-client";
+import { initAuthSession, applyPendingSession, type AuthResponse } from "@/features/auth/lib/auth-session";
+import { brand } from "@/config/brand";
+import { TRIAL_AUTHORIZATION_PAISE, TRIAL_AUTHORIZATION_RUPEES } from "@/features/checkout/lib/order-math";
+import { clearSignupDraft } from "@/features/checkout/lib/billing-session";
 import { paymentApi } from "@/features/subscription/services/paymentApi";
+import { useRazorpayCheckout, type RazorpaySuccessResponse } from "@/features/subscription/hooks/useRazorpayCheckout";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
 import { Select } from "@/shared/components/ui/Select";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { type DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
+import type { BillingCycle, PurchaseMode } from "@/features/checkout/lib/checkout-params";
 
 const INDUSTRIES = [
   "Technology",
@@ -45,13 +49,18 @@ export function SignUpMultiStep({
   plan,
   modeHref,
   returnTo,
+  purchaseMode = "trial",
+  cycle = "annual",
 }: {
   plan: DynamicPlan | null;
   modeHref: (mode: AuthMode) => string;
   returnTo: string;
+  purchaseMode?: PurchaseMode;
+  cycle?: BillingCycle;
 }) {
   const dispatch = useAppDispatch();
   const router = useRouter();
+  const { initializePayment } = useRazorpayCheckout();
   const hasPlan = Boolean(plan);
   const resumingCheckout = returnTo.startsWith("/checkout");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -62,44 +71,132 @@ export function SignUpMultiStep({
   });
 
   const onAccountSubmit = async (values: AccountValues) => {
-    if (!plan && !resumingCheckout) {
-      toast.message("Choose a plan to continue.");
-      router.push(ROUTES.pricing);
-      return;
-    }
-
     setIsProcessing(true);
+    let shouldReset = true;
     try {
-      if (!plan) {
-        toast.message("Choose a plan to continue.");
+      if (plan) {
+        let trialAuth: any = null;
+        let isResuming = false;
+        
+        try {
+          // Check if there is an existing pending signup to resume
+          trialAuth = await paymentApi.resumeTrialAuth({
+            email: values.email,
+            password: values.password,
+          });
+          isResuming = true;
+        } catch (err: any) {
+          if (err?.status === 404 || err?.message?.includes("404")) {
+            // expected: no pending signup, continue normal flow
+          } else {
+            throw err;
+          }
+        }
+
+        if (isResuming && trialAuth) {
+          shouldReset = false;
+          clearSignupDraft();
+
+          const razorpayKey = trialAuth?.keyId ?? process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "";
+          if (!razorpayKey.startsWith("rzp_test_") && process.env.NODE_ENV !== "production") {
+            toast.error("Local checkout requires a Razorpay test key (rzp_test_…).");
+            setIsProcessing(false);
+            return;
+          }
+
+          const orderId = trialAuth?.orderId ?? trialAuth?.id;
+          if (!orderId) {
+            toast.error("Missing trial order id. Please try again.");
+            setIsProcessing(false);
+            return;
+          }
+
+          await initializePayment(
+            {
+              key: razorpayKey,
+              currency: trialAuth?.currency ?? "INR",
+              amount:
+                typeof trialAuth?.amountPaise === "number"
+                  ? trialAuth.amountPaise
+                  : TRIAL_AUTHORIZATION_PAISE,
+              order_id: orderId,
+              name: brand.name,
+              description: `Free trial authorization — INR ${TRIAL_AUTHORIZATION_RUPEES}`,
+              prefill: { email: values.email, name: values.company },
+              theme: { color: brand.colors.greenBright },
+            },
+            async (response: RazorpaySuccessResponse) => {
+              await paymentApi.verifyTrialAuth({
+                ...response,
+                pendingTrialId: trialAuth.pendingTrialId,
+              });
+
+              const loginData = await apiClient<AuthResponse>("/auth/login", {
+                method: "POST",
+                body: JSON.stringify({ email: values.email, password: values.password }),
+              });
+
+              await initAuthSession(dispatch, loginData, values.email, true);
+              router.push(ROUTES.billingConfirmation);
+            },
+            (error) => {
+              toast.error(error?.message || "Payment cancelled.");
+              setIsProcessing(false);
+              router.push(ROUTES.pricing);
+            }
+          );
+          return;
+        }
+
+        // Normal new signup: capture-signup -> save draft -> checkout
+        const captured = await paymentApi.captureSignup({
+          name: values.company,
+          superAdminEmail: values.email,
+          superAdminName: values.fullName,
+          industry: values.industry,
+          adminPassword: values.password,
+          planId: plan.id,
+          phone: values.phone,
+          billingCycle: cycle,
+        });
+
+        applyPendingSession(dispatch, {
+          fullName: values.fullName,
+          email: values.email,
+          company: values.company,
+          industry: values.industry,
+          password: values.password,
+          phone: values.phone,
+          pendingTrialId: captured.pendingTrialId,
+          planId: plan.id,
+          planSlug: plan.slug,
+          purchaseMode,
+          cycle,
+        });
+
+        toast.success("Account created. Continue to billing to buy your plan.");
+        const checkoutPath = returnTo.startsWith("/checkout")
+          ? returnTo
+          : ROUTES.checkout(plan.slug, { cycle, mode: purchaseMode });
+        router.push(checkoutPath);
+      } else {
+        // Path 2: no plan — save draft locally, org created at checkout
+        applyPendingSession(dispatch, {
+          fullName: values.fullName,
+          email: values.email,
+          company: values.company,
+          industry: values.industry,
+          password: values.password,
+          phone: values.phone,
+        });
+        toast.success("Account created. Now choose a plan.");
         router.push(ROUTES.pricing);
-        return;
       }
-
-      await paymentApi.captureSignup({
-        name: values.company,
-        superAdminEmail: values.email,
-        superAdminName: values.fullName,
-        industry: values.industry,
-        adminPassword: values.password,
-        planId: plan.id,
-        phone: values.phone,
-      });
-
-      applyPendingSession(dispatch, {
-        fullName: values.fullName,
-        email: values.email,
-        company: values.company,
-        industry: values.industry,
-        password: values.password,
-      });
-      dispatch(selectPlan(plan.slug));
-      toast.success("Account saved. Choose a plan to continue.");
-      router.push(returnTo.startsWith("/checkout") ? returnTo : ROUTES.pricing);
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Could not create account."));
+      if (!shouldReset) setIsProcessing(false);
     } finally {
-      setIsProcessing(false);
+      if (shouldReset) setIsProcessing(false);
     }
   };
 
@@ -170,15 +267,13 @@ export function SignUpMultiStep({
           error={accountForm.formState.errors.password?.message}
           {...accountForm.register("password")}
         />
-        {hasPlan || resumingCheckout ? (
-          <Button className="mt-2 w-full" type="submit" disabled={isProcessing}>
-            {isProcessing ? "Continuing..." : "Create account & continue"}
-          </Button>
-        ) : (
-          <Button className="mt-2 w-full" type="button" onClick={() => router.push(ROUTES.pricing)}>
-            Choose a plan to continue
-          </Button>
-        )}
+        <Button className="mt-2 w-full" type="submit" disabled={isProcessing}>
+          {isProcessing
+            ? "Continuing..."
+            : hasPlan || resumingCheckout
+              ? "Create account & continue"
+              : "Create account & choose plan"}
+        </Button>
       </form>
 
       <p className="mt-4 text-xs leading-5 text-white/38">

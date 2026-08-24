@@ -46,7 +46,6 @@ export interface TrialVerificationRequest {
   razorpay_order_id: string;
   razorpay_payment_id: string;
   razorpay_signature: string;
-  billing?: BillingPayload;
 }
 
 export type AutoPaySubscriptionRequest = TrialAuthRequest;
@@ -102,7 +101,6 @@ export interface BuyNowVerificationRequest {
   razorpay_order_id: string;
   razorpay_payment_id: string;
   razorpay_signature: string;
-  billing?: BillingPayload;
 }
 
 export interface Plan {
@@ -136,6 +134,10 @@ export interface SubscriptionStatus {
   autoPayEnabled?: boolean;
   razorpaySubscriptionId?: string;
   message?: string;
+  priceAtActivation?: number;
+  billingCycle?: string;
+  maxUsers?: number;
+  perUserCost?: number;
 }
 
 export const subscriptionApi = {
@@ -145,62 +147,4 @@ export const subscriptionApi = {
     apiClient<SubscriptionStatus>(`/subscription/status/${organizationId}`),
 
   cancelAutoPay: () => apiClient("/subscription/cancel-auto-pay", { method: "POST" }),
-};
-
-export interface OrganizationProfileUpdate {
-  registeredLegalName: string;
-  gstin: string;
-  panNumber: string;
-  streetAddress: string;
-  state: string;
-  postalCode: string;
-  country: string;
-}
-
-export const razorpayApi = {
-  createTrialAuth: (data: TrialAuthRequest) =>
-    apiClient<TrialAuthResponse>("/razorpay/create-trial-auth", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  verifyTrialAuth: (data: TrialVerificationRequest) =>
-    apiClient("/razorpay/verify-trial-auth", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  createBuyNowOrder: (data: BuyNowOrderRequest) =>
-    apiClient<BuyNowOrderResponse>("/razorpay/create-buy-now-order", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  verifyBuyNowPayment: (data: BuyNowVerificationRequest) =>
-    apiClient<{ organizationId?: string }>("/razorpay/verify-buy-now", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  /** Kept for account billing auto-pay management — not used for Buy Now checkout. */
-  createAutoPaySubscription: (data: AutoPaySubscriptionRequest) =>
-    apiClient<AutoPaySubscriptionResponse>("/razorpay/create-auto-pay-subscription", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  verifySubscriptionPayment: (data: SubscriptionVerificationRequest) =>
-    apiClient("/razorpay/verify-subscription", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  updateOrganizationProfile: (organizationId: string, data: OrganizationProfileUpdate) => {
-    const formData = new FormData();
-    Object.entries(data).forEach(([key, value]) => {
-      if (value !== undefined) formData.append(key, value);
-    });
-    formData.append("organizationId", organizationId);
-    return apiClient("/organization-profiles", { method: "POST", body: formData });
-  },
 };

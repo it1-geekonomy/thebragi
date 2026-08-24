@@ -13,8 +13,9 @@ import {
   getPostAuthDestination,
   sanitizeReturnTo,
 } from "@/features/auth/lib/post-auth-routing";
-import { applyPendingSession, initAuthSession, type AuthResponse } from "@/features/auth/lib/auth-session";
+import { initAuthSession, type AuthResponse } from "@/features/auth/lib/auth-session";
 import { apiClient } from "@/shared/lib/api-client";
+import { brand } from "@/config/brand";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
 import { formatCurrency } from "@/shared/lib/format-currency";
@@ -23,7 +24,11 @@ import { cn } from "@/shared/lib/cn";
 import { SignUpMultiStep } from "./SignUpMultiStep";
 import { getApiErrorMessage } from "@/shared/lib/api-client";
 import { useSubscriptionPlans, type DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
+import { paymentApi } from "@/features/subscription/services/paymentApi";
 import { BackButton } from "@/shared/components/ui/BackButton";
+import { clearSignupDraft } from "@/features/checkout/lib/billing-session";
+import { TRIAL_AUTHORIZATION_PAISE, TRIAL_AUTHORIZATION_RUPEES } from "@/features/checkout/lib/order-math";
+import { useRazorpayCheckout, type RazorpaySuccessResponse } from "@/features/subscription/hooks/useRazorpayCheckout";
 
 const passwordSchema = yup.object({
   email: yup.string().email("Enter a valid email.").required("Email is required."),
@@ -60,9 +65,11 @@ function authHref(
 }
 
 
-function PasswordMode({ returnTo }: { returnTo: string }) {
+function PasswordMode({ returnTo, plans }: { returnTo: string; plans: DynamicPlan[] }) {
   const dispatch = useAppDispatch();
   const router = useRouter();
+  const { initializePayment } = useRazorpayCheckout();
+  const [isResumingTrial, setIsResumingTrial] = useState(false);
   const {
     register,
     handleSubmit,
@@ -83,36 +90,82 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
             });
 
             if (data.code === "PAYMENT_PENDING") {
-              applyPendingSession(dispatch, {
-                fullName: data.user?.name || values.email.split("@")[0],
+              setIsResumingTrial(true);
+              clearSignupDraft();
+
+              const trialAuth = await paymentApi.resumeTrialAuth({
                 email: values.email,
-                company: data.user?.company || values.email,
-                industry: "",
                 password: values.password,
-                resume: true,
               });
-              toast.success("Signed in. Choose a plan to activate your workspace.");
-              router.push(
-                getPostAuthDestination({
-                  isNewSignup: false,
-                  subscriptionStatus: "none",
-                  returnTo,
-                }),
+
+              const razorpayKey =
+                trialAuth?.keyId ?? process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "";
+              if (!razorpayKey.startsWith("rzp_test_") && process.env.NODE_ENV !== "production") {
+                toast.error("Local checkout requires a Razorpay test key (rzp_test_…).");
+                setIsResumingTrial(false);
+                return;
+              }
+
+              const orderId = trialAuth?.orderId ?? trialAuth?.id;
+              if (!orderId) {
+                toast.error("Missing trial order id. Please try again.");
+                setIsResumingTrial(false);
+                return;
+              }
+
+              await initializePayment(
+                {
+                  key: razorpayKey,
+                  currency: trialAuth?.currency ?? "INR",
+                  amount:
+                    typeof trialAuth?.amountPaise === "number"
+                      ? trialAuth.amountPaise
+                      : TRIAL_AUTHORIZATION_PAISE,
+                  order_id: orderId,
+                  name: brand.name,
+                  description: `Free trial authorization — INR ${TRIAL_AUTHORIZATION_RUPEES}`,
+                  prefill: { email: values.email, name: values.email.split("@")[0] },
+                  theme: { color: brand.colors.greenBright },
+                },
+                async (response: RazorpaySuccessResponse) => {
+                  await paymentApi.verifyTrialAuth({
+                    ...response,
+                    pendingTrialId: trialAuth.pendingTrialId,
+                  });
+
+                  const loginData = await apiClient<AuthResponse>("/auth/login", {
+                    method: "POST",
+                    body: JSON.stringify({ email: values.email, password: values.password }),
+                  });
+
+                  await initAuthSession(dispatch, loginData, values.email, true);
+                  router.push(ROUTES.billingConfirmation);
+                },
+                (error) => {
+                  toast.error(error?.message || "Payment cancelled.");
+                  setIsResumingTrial(false);
+                  router.push(ROUTES.pricing);
+                },
               );
+
               return;
             }
 
             const sessionDetails = await initAuthSession(dispatch, data, values.email, false);
-            
-            router.push(
-              getPostAuthDestination({
-                isNewSignup: false,
-                subscriptionStatus: sessionDetails.subscriptionStatus,
-                activePlan: sessionDetails.activePlan,
-                returnTo,
-              }),
+            const destination = getPostAuthDestination({
+              isNewSignup: false,
+              subscriptionStatus: sessionDetails.subscriptionStatus,
+              activePlan: sessionDetails.activePlan,
+              returnTo,
+            });
+            router.push(destination);
+            toast.success(
+              sessionDetails.subscriptionStatus === "trialing"
+                ? "Signed in. Your trial is still active."
+                : sessionDetails.subscriptionStatus === "expired"
+                  ? "Signed in. Renew your plan to keep using Bragi."
+                  : "Signed in successfully.",
             );
-            toast.success("Signed in successfully.");
           } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, "Invalid email or password."));
           }
@@ -130,15 +183,23 @@ function PasswordMode({ returnTo }: { returnTo: string }) {
         </Link>
       </div>
 
-      <Button className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? "Signing in..." : "Sign in"}
+      <Button className="w-full" disabled={isSubmitting || isResumingTrial}>
+        {isResumingTrial ? "Opening checkout..." : isSubmitting ? "Signing in..." : "Sign in"}
       </Button>
     </form>
   );
 }
 
 
-function SignInPanel({ returnTo, modeHref }: { returnTo: string; modeHref: (mode: AuthMode) => string }) {
+function SignInPanel({
+  returnTo,
+  modeHref,
+  plans,
+}: {
+  returnTo: string;
+  modeHref: (mode: AuthMode) => string;
+  plans: DynamicPlan[];
+}) {
   return (
     <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6 sm:p-8">
       <BragiLogo />
@@ -151,7 +212,7 @@ function SignInPanel({ returnTo, modeHref }: { returnTo: string; modeHref: (mode
       </p>
 
       <div className="mt-6">
-        <PasswordMode returnTo={returnTo} />
+        <PasswordMode returnTo={returnTo} plans={plans} />
       </div>
     </section>
   );
@@ -274,7 +335,13 @@ function AuthFormContent() {
           <p className="text-sm font-semibold text-white">{mode === "signup" ? "Create account" : "Sign in"}</p>
         </div>
         <p className="mt-3 max-w-2xl text-base leading-6 text-white/70">
-          Sign in or create an account to continue to billing. Your plan selection is saved.
+          {showPlan
+            ? buyNow
+              ? "Sign in or create an account to buy this plan. Your selection is saved."
+              : "Sign in or create an account to start a 14-day trial. Your plan selection is saved."
+            : mode === "signup"
+              ? "Create an account, then choose a plan to activate your workspace."
+              : "Sign in to open your workspace, or finish checkout if payment is still pending."}
         </p>
         {/* Removed duplicate back link */}
         <div className="mt-5 inline-flex rounded-full border border-white/12 bg-white/[0.04] p-1">
@@ -303,9 +370,15 @@ function AuthFormContent() {
 
       <div className={cn("grid gap-8", showPlan ? "lg:grid-cols-[1.15fr_0.85fr] lg:items-start" : "max-w-xl")}>
         {mode === "signup" ? (
-          <SignUpMultiStep plan={plan} modeHref={modeHref} returnTo={returnTo} />
+          <SignUpMultiStep
+            plan={plan}
+            modeHref={modeHref}
+            returnTo={returnTo}
+            purchaseMode={purchaseMode === "buy_now" ? "buy_now" : "trial"}
+            cycle={billingCycle}
+          />
         ) : (
-          <SignInPanel returnTo={returnTo} modeHref={modeHref} />
+          <SignInPanel returnTo={returnTo} modeHref={modeHref} plans={plans} />
         )}
         {showPlan ? <PlanSummaryAside plan={plan} buyNow={buyNow} billingCycle={billingCycle} /> : null}
       </div>

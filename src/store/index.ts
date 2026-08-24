@@ -16,14 +16,6 @@ type SessionState = {
   role: string | null;
 };
 
-type CheckoutState = {
-  selectedPlan: string | null;
-  step: "account" | "verify" | "payment" | "success";
-  organizationId: string | null;
-  planId: string | null;
-  userEmail: string | null;
-};
-
 const initialSessionState: SessionState = {
   isAuthenticated: false,
   userName: null,
@@ -38,14 +30,6 @@ const initialSessionState: SessionState = {
   role: null,
 };
 
-const initialCheckoutState: CheckoutState = {
-  selectedPlan: null,
-  step: "account",
-  organizationId: null,
-  planId: null,
-  userEmail: null,
-};
-
 const sessionSlice = createSlice({
   name: "session",
   initialState: initialSessionState,
@@ -55,17 +39,6 @@ const sessionSlice = createSlice({
     },
     clearSession() {
       return initialSessionState;
-    },
-  },
-});
-
-const checkoutSlice = createSlice({
-  name: "checkout",
-  initialState: initialCheckoutState,
-  reducers: {
-    selectPlan(state, action: PayloadAction<string>) {
-      state.selectedPlan = action.payload;
-      state.step = "account";
     },
   },
 });
@@ -89,17 +62,14 @@ const uiSlice = createSlice({
 });
 
 export const { setMockSession, clearSession } = sessionSlice.actions;
-export const { selectPlan } = checkoutSlice.actions;
 export const { setMobileNavOpen } = uiSlice.actions;
 
 export const store = configureStore({
   reducer: {
     session: sessionSlice.reducer,
-    checkout: checkoutSlice.reducer,
     ui: uiSlice.reducer,
   },
 });
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
-

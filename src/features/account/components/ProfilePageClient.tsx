@@ -11,6 +11,7 @@ import { paymentApi } from "@/features/subscription/services/paymentApi";
 import { apiClient } from "@/shared/lib/api-client";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/config/routes";
+import { readSignupDraft } from "@/features/checkout/lib/billing-session";
 
 type ProfileView = {
   name: string;
@@ -19,6 +20,8 @@ type ProfileView = {
   role: string;
   plan: string;
   subscribed: boolean;
+  trialing: boolean;
+  pendingCheckout: boolean;
 };
 
 export function ProfilePageClient() {
@@ -36,8 +39,8 @@ export function ProfilePageClient() {
           subscriptionApi.getSubscriptionStatus(session.organizationId).catch(() => null),
         ]);
         if (cancelled) return;
-        const subscribed =
-          sub?.status?.toUpperCase() === "ACTIVE" || sub?.status?.toUpperCase() === "TRIAL";
+        const status = sub?.status?.toUpperCase() ?? "";
+        const subscribed = status === "ACTIVE" || status === "TRIAL" || status === "TRIALING";
         setProfile({
           name: session.userName || "",
           email: session.userEmail || "",
@@ -45,6 +48,8 @@ export function ProfilePageClient() {
           role: session.role?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "",
           plan: sub?.plan || "",
           subscribed,
+          trialing: status === "TRIAL" || status === "TRIALING",
+          pendingCheckout: false,
         });
         return;
       }
@@ -52,13 +57,18 @@ export function ProfilePageClient() {
       if (!session.userEmail) return;
       const pending = await paymentApi.getPendingSignup(session.userEmail).catch(() => null);
       if (cancelled) return;
+
+      const draft = readSignupDraft();
+
       setProfile({
-        name: pending?.name || session.userName || "",
-        email: pending?.email || session.userEmail || "",
-        company: pending?.company || "",
+        name: pending?.name || draft?.fullName || session.userName || "",
+        email: pending?.email || draft?.email || session.userEmail || "",
+        company: pending?.company || draft?.company || "",
         role: "",
-        plan: pending?.planName || "",
+        plan: pending?.planName || draft?.planSlug || "",
         subscribed: false,
+        trialing: false,
+        pendingCheckout: Boolean(pending || draft?.planSlug),
       });
     }
 
@@ -78,6 +88,16 @@ export function ProfilePageClient() {
 
   const details = [
     ...(profile.role ? ([["Role", profile.role]] as const) : []),
+    [
+      "Status",
+      profile.subscribed
+        ? profile.trialing
+          ? "Trial active"
+          : "Subscription active"
+        : profile.pendingCheckout
+          ? "Checkout incomplete"
+          : "No plan",
+    ],
     ["Plan", profile.plan || "None"],
   ];
 
@@ -87,7 +107,13 @@ export function ProfilePageClient() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">Account</p>
           <h1 className="mt-3 text-3xl font-semibold text-white">Profile</h1>
-          <p className="mt-2 text-sm text-white/52">Manage your personal and company details.</p>
+          <p className="mt-2 text-sm text-white/52">
+            {profile.subscribed
+              ? "Your workspace account details."
+              : profile.pendingCheckout
+                ? "Finish checkout to activate your workspace. Organization details unlock after payment."
+                : "Choose a plan to activate your workspace."}
+          </p>
         </div>
         {profile.role ? <Badge>{profile.role}</Badge> : null}
       </div>
@@ -103,10 +129,18 @@ export function ProfilePageClient() {
           </div>
           <div className="flex flex-col gap-2">
             <Button type="button" onClick={() => router.push(profile.subscribed ? ROUTES.dashboard : ROUTES.pricing)}>
-              {profile.subscribed ? "Edit in Workspace" : "Choose a plan"}
+              {profile.subscribed
+                ? "Open workspace"
+                : profile.pendingCheckout
+                  ? "Complete checkout"
+                  : "Choose a plan"}
             </Button>
             {!profile.subscribed ? (
-              <p className="text-xs text-white/52">You need an active subscription to manage organization details.</p>
+              <p className="text-xs text-white/52">
+                {profile.pendingCheckout
+                  ? "Your account is saved. Complete payment or trial authorization to create the organization."
+                  : "You need an active subscription to manage organization details."}
+              </p>
             ) : null}
           </div>
         </Card>

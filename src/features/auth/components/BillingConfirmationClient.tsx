@@ -21,6 +21,7 @@ export function BillingConfirmationClient() {
   );
   const { plans, loading } = useSubscriptionPlans();
   const subscribed = hasActiveSubscription(subscriptionStatus, activePlan);
+  const isTrial = subscriptionStatus === "trialing";
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -30,10 +31,14 @@ export function BillingConfirmationClient() {
     if (subscriptionStatus === null) return;
     if (!subscribed) {
       router.replace(getInactiveSubscriptionDestination(subscriptionStatus));
+      return;
     }
-  }, [isAuthenticated, subscribed, subscriptionStatus, router]);
+    if (!isTrial) {
+      router.replace(ROUTES.dashboard);
+    }
+  }, [isAuthenticated, subscribed, subscriptionStatus, isTrial, router]);
 
-  if (!isAuthenticated || !subscribed) {
+  if (!isAuthenticated || !subscribed || !isTrial) {
     return null;
   }
 

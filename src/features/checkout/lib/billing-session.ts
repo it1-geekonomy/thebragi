@@ -1,4 +1,4 @@
-import type { BillingCycle } from "@/features/checkout/lib/checkout-params";
+import type { BillingCycle, PurchaseMode } from "@/features/checkout/lib/checkout-params";
 
 export type VerifiedBilling = {
   gstin: string;
@@ -11,7 +11,7 @@ export type VerifiedBilling = {
   country: string;
   city?: string;
   plan: string;
-  seats: number;
+  users: number;
   cycle: BillingCycle;
   verifiedAt: number;
 };
@@ -46,6 +46,11 @@ export type SignupDraft = {
   phone?: string;
   city?: string;
   resume?: boolean;
+  pendingTrialId?: string;
+  planId?: string;
+  planSlug?: string;
+  purchaseMode?: PurchaseMode;
+  cycle?: BillingCycle;
 };
 
 const SIGNUP_KEY = "bragi_signup_draft";

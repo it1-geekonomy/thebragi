@@ -12,7 +12,6 @@ import { apiClient, getApiErrorMessage, getApiUrl } from "@/shared/lib/api-clien
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
-import { razorpayApi } from "@/features/subscription/api";
 import { paymentApi } from "@/features/subscription/services/paymentApi";
 import {
   useRazorpayCheckout,
@@ -81,23 +80,21 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const isAuthenticated = useAppSelector((state) => state.session.isAuthenticated);
-  const { organizationId: checkoutOrgId, userEmail: checkoutEmail } = useAppSelector((state) => state.checkout);
-  const { organizationId: sessionOrgId, userEmail: sessionEmail, userName } = useAppSelector((state) => state.session);
+  const { organizationId, userEmail: sessionEmail, userName } = useAppSelector((state) => state.session);
   const [signupDraft] = useState(() => readSignupDraft());
-  const organizationId = checkoutOrgId || sessionOrgId;
-  const userEmail = checkoutEmail || sessionEmail || signupDraft?.email || userName;
+  const userEmail = sessionEmail || signupDraft?.email || userName;
   const purchaseMode: PurchaseMode = initial.mode;
   const { initializePayment } = useRazorpayCheckout();
 
-  const [seats, setSeats] = useState(initial.seats);
+  const [users, setSeats] = useState(initial.users);
   const [cycle, setCycle] = useState<BillingCycle>(initial.cycle);
   const { plans, loading } = useSubscriptionPlans();
   const plan = plans.find((item) => item.slug === initial.plan);
   const minimumSeats = plan?.minimumSeats ?? 0;
   const maximumSeats = plan?.maximumSeats;
   const resolvedSeats = plan
-    ? clampSeats(seats || plan.minimumSeats, plan.minimumSeats, plan.maximumSeats)
-    : seats;
+    ? clampSeats(users || plan.minimumSeats, plan.minimumSeats, plan.maximumSeats)
+    : users;
 
   const [legalName, setLegalName] = useState("");
   const [gstin, setGstin] = useState("");
@@ -142,7 +139,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
       // replace — push + syncCheckoutUrl's history.replaceState race and cancel soft nav
       router.replace(
         buildSignInForCheckout(
-          { plan: initial.plan, seats: resolvedSeats, cycle, mode: purchaseMode },
+          { plan: initial.plan, users: resolvedSeats, cycle, mode: purchaseMode },
           "signup",
         ),
       );
@@ -156,7 +153,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   useEffect(() => {
     // Don't rewrite history while redirecting users who still need an account.
     if (!isAuthenticated && !signupDraft) return;
-    syncCheckoutUrl({ plan: initial.plan, seats: resolvedSeats, cycle, mode: purchaseMode });
+    syncCheckoutUrl({ plan: initial.plan, users: resolvedSeats, cycle, mode: purchaseMode });
   }, [cycle, initial.plan, isAuthenticated, purchaseMode, resolvedSeats, signupDraft]);
 
   useEffect(() => {
@@ -301,7 +298,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
       toast.error("Create an account to continue checkout.");
       router.push(
         buildSignInForCheckout(
-          { plan: initial.plan, seats: resolvedSeats, cycle, mode: purchaseMode },
+          { plan: initial.plan, users: resolvedSeats, cycle, mode: purchaseMode },
           "signup",
         ),
       );
@@ -319,7 +316,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
       postalCode,
       country: finalCountry,
       plan: plan.slug,
-      seats: resolvedSeats,
+      users: resolvedSeats,
       cycle,
       verifiedAt: Date.now(),
     });
@@ -345,7 +342,9 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
             ? await paymentApi.createTrialAuth({
                 organizationId,
                 planId: plan.id,
+                users: resolvedSeats,
                 billingCycle: cycle,
+                billing,
               })
             : signupDraft?.resume
               ? await paymentApi.resumeTrialAuth({
@@ -362,7 +361,9 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                     phone: signupDraft.phone,
                     city: finalCity,
                     planId: plan.id,
+                    users: resolvedSeats,
                     billingCycle: cycle,
+                    billing,
                   })
                 : null;
 
@@ -381,7 +382,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
       const buyNowOrder =
         purchaseMode !== "buy_now"
           ? null
-          : await razorpayApi.createBuyNowOrder({
+          : await paymentApi.createBuyNowOrder({
               ...(organizationId
                 ? { organizationId }
                 : signupDraft
@@ -396,7 +397,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                     }
                   : {}),
               planId: plan.id,
-              seats: resolvedSeats,
+              users: resolvedSeats,
               billingCycle: cycle,
               billing,
             });
@@ -434,7 +435,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           description:
             purchaseMode === "trial"
               ? `Free Trial Authorization — ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)}`
-              : `${plan.name} · ${resolvedSeats} seats · ${cycle} · ${formatCurrency(buyNowRupees)}`,
+              : `${plan.name} · ${resolvedSeats} users · ${cycle} · ${formatCurrency(buyNowRupees)}`,
           prefill: { email: userEmail ?? undefined, name: legalName },
           theme: { color: brand.colors.greenBright },
         },
@@ -462,12 +463,11 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
             });
             paidOrganizationId = verified.organizationId ?? paidOrganizationId;
           } else {
-            const verified = await razorpayApi.verifyBuyNowPayment({
+            const verified = await paymentApi.verifyBuyNowPayment({
               ...response,
               ...(organizationId ? { organizationId } : { pendingTrialId }),
               planId: plan.id,
-              seats: resolvedSeats,
-              billing,
+              users: resolvedSeats,
             });
             paidOrganizationId = verified.organizationId ?? paidOrganizationId;
           }
@@ -495,6 +495,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
             setMockSession({
               isAuthenticated: true,
               scope: "full",
+              isNewSignup: Boolean(signupDraft),
               userEmail: signupDraft?.email ?? details?.userEmail ?? userEmail,
               userName: signupDraft?.fullName ?? details?.userName ?? userName,
               activePlan: details?.activePlan ?? plan.slug,
@@ -505,11 +506,17 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
               trialEndsAt: details?.trialEndsAt ?? null,
             }),
           );
-          router.push("/checkout/success");
+          router.push(purchaseMode === "trial" ? ROUTES.billingConfirmation : "/checkout/success");
         },
         (error) => {
-          toast.error(error?.message || "Payment failed.");
+          const message = error?.message || "Payment failed.";
+          toast.error(message);
           setIsPaying(false);
+          if (/cancel/i.test(message)) {
+            router.push(
+              `/checkout/cancel?plan=${encodeURIComponent(plan.slug)}&cycle=${cycle}&mode=${purchaseMode}&users=${resolvedSeats}`,
+            );
+          }
         },
       );
     } catch (error: unknown) {
@@ -524,7 +531,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         <p>{loading ? "Loading plans..." : "Redirecting to create your account..."}</p>
         <Link
           href={buildSignInForCheckout(
-            { plan: initial.plan, seats: resolvedSeats, cycle, mode: purchaseMode },
+            { plan: initial.plan, users: resolvedSeats, cycle, mode: purchaseMode },
             "signup",
           )}
           className="text-[#a8dfb3] underline"
@@ -551,8 +558,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           </h1>
           <p className="mt-2 text-sm leading-6 text-white/58">
             {purchaseMode === "trial"
-              ? `Enter billing details manually. This path authorizes only ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} for trial activation.`
-              : "Enter billing details manually. The backend receives plan, seats, billing cycle, and billing details before Razorpay is opened."}
+              ? `GSTIN validates legal name and PAN from GSTN. This path authorizes only ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} for trial activation.`
+              : "GSTIN validates legal name and PAN from GSTN. The backend receives plan, seats, billing cycle, and billing details before Razorpay is opened."}
           </p>
         </div>
 
@@ -607,10 +614,11 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
               </div>
               <Input
                 id="pan"
-                label="PAN"
+                label="PAN *"
                 value={pan}
                 onChange={(event) => setPan(event.target.value.toUpperCase())}
                 maxLength={10}
+                required
               />
             </div>
 
@@ -685,7 +693,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
 
       <OrderSummaryPanel
         plan={plan}
-        seats={resolvedSeats}
+        users={resolvedSeats}
         cycle={cycle}
         subtotal={totals.subtotal}
         tax={totals.tax}

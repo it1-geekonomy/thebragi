@@ -42,7 +42,7 @@ export function computeTax(subtotal: number, placeOfSupplyCode: string, sellerSt
 }
 export function computeOrderTotals(
   plan: PricedPlan,
-  seats: number,
+  users: number,
   cycle: BillingCycle,
   placeOfSupplyCode: string,
   sellerStateCode: string,
@@ -50,11 +50,11 @@ export function computeOrderTotals(
   const basePrice = cycle === "annual" ? plan.priceAnnual : plan.priceMonthly;
   const perUserPrice = cycle === "annual" ? plan.perUserCostAnnual : plan.perUserCostMonthly;
   const includedUsers = plan.includedUsers > 0 ? plan.includedUsers : plan.maxUsers;
-  const overageSeats = includedUsers > 0 ? additionalSeats(seats, includedUsers) : 0;
+  const overageSeats = includedUsers > 0 ? additionalSeats(users, includedUsers) : 0;
   const recurringSubtotal =
     plan.pricingModel === "included_overage" && includedUsers > 0
       ? basePrice + overageSeats * perUserPrice
-      : perUserPrice * seats;
+      : perUserPrice * users;
   const setupFee = plan.setupFee || 0;
   const subtotal = recurringSubtotal + setupFee;
   const tax = computeTax(subtotal, placeOfSupplyCode, sellerStateCode);

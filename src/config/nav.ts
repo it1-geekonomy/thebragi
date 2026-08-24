@@ -24,7 +24,3 @@ export const footerColumns = [
     ],
   },
 ];
-
-export const productNav = [
-  { label: "Dashboard", href: ROUTES.dashboard, module: null },
-];

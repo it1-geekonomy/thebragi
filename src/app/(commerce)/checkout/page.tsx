@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 export default async function CheckoutPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string; seats?: string; cycle?: string; mode?: string }>;
+  searchParams: Promise<{ plan?: string; users?: string; cycle?: string; mode?: string }>;
 }) {
   const params = await searchParams;
   const initial = parseCheckoutParams(params);

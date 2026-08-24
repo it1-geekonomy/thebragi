@@ -12,7 +12,7 @@ export default function TermsPage() {
         <div className="mt-8 grid gap-6 text-sm leading-7 text-white/64">
           <p>These preview terms describe the intended Bragi commercial model while the frontend and backend are being implemented.</p>
           <p>Paid plans, renewals, and payment handling will be governed by the final checkout and billing terms at launch.</p>
-          <p>For terms questions, contact hello@thebragi.com.</p>
+          <p>For terms questions, contact connect@thegeekonomy.com.</p>
         </div>
       </main>
     </MarketingLayout>

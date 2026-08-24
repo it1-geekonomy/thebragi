@@ -39,10 +39,117 @@ export function MarketingNavbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const [mounted, setMounted] = useState(false);
+  const [isAuthPending, setIsAuthPending] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const hasToken = !!localStorage.getItem("accessToken");
+    const hasDraft = !!localStorage.getItem("bragi_signup_draft") || !!sessionStorage.getItem("bragi_signup_draft");
+    setIsAuthPending(hasToken || hasDraft);
+  }, []);
+
   const initials = session.userName
     ? session.userName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "?";
   const canOpenApp = session.isAuthenticated && hasActiveSubscription(session.subscriptionStatus, session.activePlan);
+
+  const renderAuthSection = (isMobile = false) => {
+    if (session.isAuthenticated) {
+      if (isMobile) {
+        return (
+          <>
+            <div className="flex items-center gap-3 rounded-md px-3 py-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5f9965] text-xs font-semibold text-white">{initials}</div>
+              <div>
+                <p className="text-sm font-semibold text-white">{session.userName ?? "User"}</p>
+                <p className="text-xs text-white/38">Signed in</p>
+              </div>
+            </div>
+            {canOpenApp ? (
+              <a className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.appWorkspace}>Open workspace</a>
+            ) : pathname !== ROUTES.pricing ? (
+              <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.pricing} onClick={() => dispatch(setMobileNavOpen(false))}>Choose a plan</Link>
+            ) : null}
+            <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.account.profile} onClick={() => dispatch(setMobileNavOpen(false))}>Account settings</Link>
+            <button className="w-full rounded-md px-3 py-2 text-left text-white/44 hover:bg-white/8 hover:text-white/72" onClick={() => { dispatch(clearSession()); dispatch(setMobileNavOpen(false)); localStorage.removeItem("accessToken"); clearSignupDraft(); router.push(ROUTES.home); }}>Sign out</button>
+          </>
+        );
+      }
+      return (
+        <div className="relative" ref={profileRef}>
+          <button
+            onClick={() => setProfileOpen(!profileOpen)}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#5f9965] text-sm font-semibold text-white transition-all duration-200 hover:bg-[#6bad72] hover:shadow-lg hover:shadow-[#5f9965]/20"
+          >
+            {initials}
+          </button>
+          {profileOpen ? (
+            <div className="absolute right-0 top-12 w-56 rounded-xl border border-white/[0.08] bg-[#0a100a] p-2 shadow-2xl backdrop-blur-xl">
+              <div className="border-b border-white/[0.06] px-3 py-3">
+                <p className="text-sm font-semibold text-white">{session.userName ?? "User"}</p>
+                <p className="mt-0.5 text-xs text-white/38">Signed in</p>
+              </div>
+              <div className="mt-1 grid gap-0.5">
+                {canOpenApp ? (
+                  <a href={ROUTES.appWorkspace} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Open workspace</a>
+                ) : pathname !== ROUTES.pricing ? (
+                  <Link href={ROUTES.pricing} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Choose a plan</Link>
+                ) : null}
+                <Link href={ROUTES.account.profile} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Account settings</Link>
+                <button
+                  onClick={() => {
+                    dispatch(clearSession());
+                    setProfileOpen(false);
+                    localStorage.removeItem("accessToken");
+                    clearSignupDraft();
+                    router.push(ROUTES.home);
+                  }}
+                  className="w-full rounded-md px-3 py-2.5 text-left text-sm text-white/38 transition hover:bg-white/8 hover:text-white/72"
+                >
+                  Sign out
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (mounted && isAuthPending) {
+      if (isMobile) {
+        return (
+          <div className="flex items-center gap-3 px-3 py-2">
+            <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
+            <div className="h-4 w-20 animate-pulse rounded bg-white/10" />
+          </div>
+        );
+      }
+      return <div className="h-9 w-9 animate-pulse rounded-full bg-white/10" />;
+    }
+
+    if (isMobile) {
+      return (
+        <>
+          {pathname !== ROUTES.signIn && (
+            <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.signIn} onClick={() => dispatch(setMobileNavOpen(false))}>Sign in</Link>
+          )}
+          <Link className="rounded-md bg-[#5f9965] px-3 py-2 font-semibold text-white" href={ROUTES.pricing} onClick={() => dispatch(setMobileNavOpen(false))}>See plans</Link>
+        </>
+      );
+    }
+
+    return (
+      <>
+        {pathname !== ROUTES.signIn && (
+          <Link className="text-sm font-semibold text-white/70 hover:text-white" href={ROUTES.signIn}>Sign in</Link>
+        )}
+        {pathname !== ROUTES.pricing && (
+          <CTAButton href={ROUTES.pricing}>See plans</CTAButton>
+        )}
+      </>
+    );
+  };
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-black/82 backdrop-blur-xl">
@@ -54,53 +161,7 @@ export function MarketingNavbar() {
           ))}
         </nav>
         <div className="hidden items-center gap-3 lg:flex">
-          {session.isAuthenticated ? (
-            <div className="relative" ref={profileRef}>
-              <button
-                onClick={() => setProfileOpen(!profileOpen)}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-[#5f9965] text-sm font-semibold text-white transition-all duration-200 hover:bg-[#6bad72] hover:shadow-lg hover:shadow-[#5f9965]/20"
-              >
-                {initials}
-              </button>
-              {profileOpen ? (
-                <div className="absolute right-0 top-12 w-56 rounded-xl border border-white/[0.08] bg-[#0a100a] p-2 shadow-2xl backdrop-blur-xl">
-                  <div className="border-b border-white/[0.06] px-3 py-3">
-                    <p className="text-sm font-semibold text-white">{session.userName ?? "User"}</p>
-                    <p className="mt-0.5 text-xs text-white/38">Signed in</p>
-                  </div>
-                  <div className="mt-1 grid gap-0.5">
-                    {canOpenApp ? (
-                      <a href={ROUTES.appWorkspace} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Open workspace</a>
-                    ) : session.isAuthenticated ? (
-                      <Link href={ROUTES.pricing} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Choose a plan</Link>
-                    ) : null}
-                    <Link href={ROUTES.account.profile} onClick={() => setProfileOpen(false)} className="block rounded-md px-3 py-2.5 text-sm text-white/72 transition hover:bg-white/8 hover:text-white">Account settings</Link>
-                    <button
-                      onClick={() => {
-                        dispatch(clearSession());
-                        setProfileOpen(false);
-                        localStorage.removeItem("accessToken");
-                        clearSignupDraft();
-                        router.push(ROUTES.home);
-                      }}
-                      className="w-full rounded-md px-3 py-2.5 text-left text-sm text-white/38 transition hover:bg-white/8 hover:text-white/72"
-                    >
-                      Sign out
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <>
-              {pathname !== ROUTES.signIn && (
-                <Link className="text-sm font-semibold text-white/70 hover:text-white" href={ROUTES.signIn}>Sign in</Link>
-              )}
-              {pathname !== ROUTES.pricing && (
-                <CTAButton href={ROUTES.pricing}>See plans</CTAButton>
-              )}
-            </>
-          )}
+          {renderAuthSection(false)}
         </div>
         <button className="rounded-md border border-white/12 px-3 py-2 text-sm font-semibold text-white lg:hidden" onClick={() => dispatch(setMobileNavOpen(!mobileOpen))} aria-expanded={mobileOpen} aria-controls="mobile-nav">
           {mobileOpen ? "Close" : "Menu"}
@@ -110,31 +171,7 @@ export function MarketingNavbar() {
         <div id="mobile-nav" className="border-t border-white/10 px-5 py-4 lg:hidden">
           <nav className="grid gap-2 text-sm text-white/76">
             {mobileLinks.map((item) => <Link key={item.href} className={cn("rounded-md px-3 py-2 hover:bg-white/8", pathname === item.href && "bg-white/8 text-white")} href={item.href} onClick={() => dispatch(setMobileNavOpen(false))}>{item.label}</Link>)}
-            {session.isAuthenticated ? (
-              <>
-                <div className="flex items-center gap-3 rounded-md px-3 py-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5f9965] text-xs font-semibold text-white">{initials}</div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">{session.userName ?? "User"}</p>
-                    <p className="text-xs text-white/38">Signed in</p>
-                  </div>
-                </div>
-                {canOpenApp ? (
-                  <a className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.appWorkspace}>Open workspace</a>
-                ) : session.isAuthenticated ? (
-                  <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.pricing} onClick={() => dispatch(setMobileNavOpen(false))}>Choose a plan</Link>
-                ) : null}
-                <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.account.profile} onClick={() => dispatch(setMobileNavOpen(false))}>Account settings</Link>
-                <button className="w-full rounded-md px-3 py-2 text-left text-white/44 hover:bg-white/8 hover:text-white/72" onClick={() => { dispatch(clearSession()); dispatch(setMobileNavOpen(false)); localStorage.removeItem("accessToken"); clearSignupDraft(); }}>Sign out</button>
-              </>
-            ) : (
-              <>
-                {pathname !== ROUTES.signIn && (
-                  <Link className="rounded-md px-3 py-2 hover:bg-white/8" href={ROUTES.signIn} onClick={() => dispatch(setMobileNavOpen(false))}>Sign in</Link>
-                )}
-                <Link className="rounded-md bg-[#5f9965] px-3 py-2 font-semibold text-white" href={ROUTES.pricing} onClick={() => dispatch(setMobileNavOpen(false))}>See plans</Link>
-              </>
-            )}
+            {renderAuthSection(true)}
           </nav>
         </div>
       ) : null}

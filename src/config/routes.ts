@@ -11,8 +11,8 @@ export const ROUTES = {
   home: "/",
   pricing: "/pricing",
   contact: "/contact",
-  checkout: (plan: string, opts?: { seats?: number; cycle?: BillingCycle; mode?: PurchaseMode }) =>
-    buildCheckoutPath({ plan, seats: opts?.seats, cycle: opts?.cycle, mode: opts?.mode }),
+  checkout: (plan: string, opts?: { users?: number; cycle?: BillingCycle; mode?: PurchaseMode }) =>
+    buildCheckoutPath({ plan, users: opts?.users, cycle: opts?.cycle, mode: opts?.mode }),
   /** Canonical auth page — sign-in and sign-up share `/sign-in`. */
   signIn: "/sign-in",
   signUp: (plan?: string, opts?: { cycle?: BillingCycle; mode?: PurchaseMode }) => {
@@ -31,7 +31,6 @@ export const ROUTES = {
   forgotPassword: "/forgot-password",
   resetPassword: "/reset-password",
   dashboard: "/dashboard",
-  onboarding: "/app/onboarding",
   billingConfirmation: "/billing-confirmation",
   appWorkspace: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   subscriptionExpired: "/subscription-expired",

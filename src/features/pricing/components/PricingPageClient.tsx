@@ -12,6 +12,12 @@ import { Button } from "@/shared/components/ui/Button";
 import { Toggle } from "@/shared/components/ui/Toggle";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
+import { readSignupDraft } from "@/features/checkout/lib/billing-session";
+import {
+  checkoutPathForPending,
+  fetchPendingSignup,
+  type PendingSignupProfile,
+} from "@/features/auth/lib/pending-checkout";
 import { BackButton } from "@/shared/components/ui/BackButton";
 
 type BillingCycle = "monthly" | "annual";
@@ -22,23 +28,65 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
   const subscribed = session.isAuthenticated && hasActiveSubscription(session.subscriptionStatus, session.activePlan);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("annual");
   const [selectedSlug, setSelectedSlug] = useState(() => highlightedPlan ?? "");
+  const [signupDraft] = useState(() => readSignupDraft());
+  const hasAccount = session.isAuthenticated || !!signupDraft;
+  const [pendingSignup, setPendingSignup] = useState<PendingSignupProfile | null>(null);
 
   const { plans, loading, error } = useSubscriptionPlans();
+
+  useEffect(() => {
+    const email = session.userEmail || signupDraft?.email;
+    if (!email || subscribed) return;
+
+    let cancelled = false;
+    void fetchPendingSignup(email).then((pending) => {
+      if (!cancelled && pending) setPendingSignup(pending);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session.userEmail, signupDraft?.email, subscribed]);
+
+  const pendingPlanSlug =
+    pendingSignup && plans.length
+      ? plans.find((plan) => plan.id === pendingSignup.planId)?.slug ?? null
+      : signupDraft?.planSlug ?? null;
 
   const isActivePlan = (p: { slug: string; name: string }) =>
     p.slug.toLowerCase() === session.activePlan?.toLowerCase() ||
     p.name.toLowerCase() === session.activePlan?.toLowerCase();
 
+  const isTrial = subscribed && session.subscriptionStatus === "trialing";
+  const isPendingCheckout = Boolean(hasAccount && !subscribed && (pendingSignup || signupDraft?.planSlug));
+  const pendingBuyNow = signupDraft?.purchaseMode === "buy_now";
   const currentPlan = subscribed ? plans.find(isActivePlan) : null;
   const displayPlans = plans;
   const highlightedPlanObj = highlightedPlan ? plans.find((p) => p.slug === highlightedPlan) : null;
   const effectiveSlug =
     selectedSlug && displayPlans.some((p) => p.slug === selectedSlug)
       ? selectedSlug
-      : highlightedPlan && displayPlans.some((p) => p.slug === highlightedPlan)
-        ? highlightedPlan
-        : displayPlans[0]?.slug ?? "";
+      : pendingPlanSlug && displayPlans.some((p) => p.slug === pendingPlanSlug)
+        ? pendingPlanSlug
+        : highlightedPlan && displayPlans.some((p) => p.slug === highlightedPlan)
+          ? highlightedPlan
+          : displayPlans[0]?.slug ?? "";
   const selectedPlan = displayPlans.find((p) => p.slug === effectiveSlug) || displayPlans[0];
+  const pendingCheckoutPath =
+    pendingSignup && plans.length
+      ? checkoutPathForPending(plans, pendingSignup, {
+          cycle: billingCycle,
+          mode: signupDraft?.purchaseMode === "buy_now" ? "buy_now" : "trial",
+          planSlug: selectedSlug || pendingPlanSlug,
+        })
+      : null;
+  const resumeCheckoutPath =
+    pendingCheckoutPath ||
+    (signupDraft?.planSlug
+      ? ROUTES.checkout(signupDraft.planSlug, {
+          cycle: signupDraft.cycle ?? billingCycle,
+          mode: signupDraft.purchaseMode === "buy_now" ? "buy_now" : "trial",
+        })
+      : null);
 
   useEffect(() => {
     if (!highlightedPlan) return;
@@ -69,22 +117,46 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
             <BackButton />
           </div>
           <div className="inline-flex items-center gap-3">
-            <p className="text-sm font-semibold text-white">{subscribed ? "Your plan" : "Choose your plan"}</p>
+            <p className="text-sm font-semibold text-white">
+              {subscribed ? (isTrial ? "Your trial" : "Your plan") : isPendingCheckout ? "Finish checkout" : "Choose your plan"}
+            </p>
           </div>
 
           <div className="mt-12 flex flex-col items-center text-center">
             <BragiLogo />
             <h1 className="mt-8 max-w-3xl text-4xl font-semibold leading-tight sm:text-5xl">
-              {subscribed ? "Your Bragi workspace is active" : session.isAuthenticated ? "Choose a plan to continue" : "Run sales and delivery in one place"}
+              {subscribed
+                ? isTrial
+                  ? "Your trial is active"
+                  : "Your Bragi workspace is active"
+                : isPendingCheckout
+                  ? pendingBuyNow
+                    ? "Complete payment to activate"
+                    : "Complete your trial checkout"
+                  : hasAccount
+                    ? "Choose a plan to continue"
+                    : "Run sales and delivery in one place"}
             </h1>
             <p className="mt-4 max-w-xl text-base leading-7 text-white/58">
               {subscribed
-                ? `You're on ${currentPlan?.name ?? "an active plan"}. Open the app to continue working — no need to pick a plan again.`
-                : session.isAuthenticated ? "Pick a subscription plan to activate your workspace." : "Start a 14-day trial with a INR 1 authorization. Cancel any time."}
+                ? isTrial
+                  ? `You're on a ${currentPlan?.name ?? "Bragi"} trial. Open the app to start working, or switch plans below.`
+                  : `You're on ${currentPlan?.name ?? "an active plan"}. Open the app to continue working — no need to pick a plan again.`
+                : pendingSignup?.planName
+                  ? pendingBuyNow
+                    ? `Your ${pendingSignup.planName} purchase is saved — pay to activate your workspace.`
+                    : `Your ${pendingSignup.planName} trial signup is saved — authorize INR 1 to activate.`
+                  : hasAccount
+                    ? "Your account is ready — pick a trial or buy a plan below to activate your workspace."
+                    : "Start a 14-day trial with a INR 1 authorization. Cancel any time."}
             </p>
             {subscribed ? (
               <Button className="mt-8" onClick={() => router.push(ROUTES.dashboard)}>
                 Open workspace
+              </Button>
+            ) : resumeCheckoutPath ? (
+              <Button className="mt-8" onClick={() => router.push(resumeCheckoutPath)}>
+                {pendingBuyNow ? "Continue to payment" : "Complete trial checkout"}
               </Button>
             ) : null}
             <div className="mx-auto mb-16 mt-16 max-w-4xl border-y border-white/10 py-10">
@@ -127,6 +199,13 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
 
       <section className="px-5 pb-10 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-7xl">
+          {!subscribed && pendingSignup?.planName ? (
+            <Alert tone="success" className="mb-6">
+              {pendingBuyNow
+                ? `You started buying ${pendingSignup.planName}. Complete payment to activate, or pick a different plan below.`
+                : `You started a trial for ${pendingSignup.planName}. Complete the INR 1 authorization to activate, or pick a different plan below.`}
+            </Alert>
+          ) : null}
           {!subscribed && highlightedPlanObj ? (
             <Alert tone="success" className="mb-6">
               Focused plan: {highlightedPlanObj.name}. Pick trial or buy below to continue.
@@ -150,7 +229,7 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
 
         {selectedPlan ? (
           <div className="mx-auto mt-10 flex max-w-xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
-            {!session.isAuthenticated ? (
+            {!hasAccount ? (
               <>
                 <Link
                   className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-5 py-3 text-sm font-semibold text-white hover:bg-[#6bad72] sm:w-auto sm:min-w-52"
@@ -200,7 +279,7 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
 
 
         <p className="mx-auto mt-5 max-w-7xl text-center text-xs leading-5 text-white/38">
-          Prices exclude GST • Seat minimum follows the selected plan •{" "}
+          Prices exclude GST • User minimum follows the selected plan •{" "}
           <Link className="text-[#a8dfb3] hover:text-white" href={ROUTES.contact}>
             Talk to sales
           </Link>{" "}

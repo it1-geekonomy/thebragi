@@ -31,6 +31,7 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
         dispatch(
           setMockSession({
             isAuthenticated: true,
+            scope: "full",
             subscriptionStatus: details.subscriptionStatus,
             activePlan: details.activePlan,
             organizationId: details.organizationId,
