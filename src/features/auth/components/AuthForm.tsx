@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -13,8 +13,8 @@ import {
   getPostAuthDestination,
   sanitizeReturnTo,
 } from "@/features/auth/lib/post-auth-routing";
-import { initAuthSession, type AuthResponse } from "@/features/auth/lib/auth-session";
-import { apiClient } from "@/shared/lib/api-client";
+import { applyPendingSession, initAuthSession, type AuthResponse } from "@/features/auth/lib/auth-session";
+import { apiClient, getApiErrorMessage } from "@/shared/lib/api-client";
 import { brand } from "@/config/brand";
 import { Button } from "@/shared/components/ui/Button";
 import { Input } from "@/shared/components/ui/Input";
@@ -22,13 +22,20 @@ import { formatCurrency } from "@/shared/lib/format-currency";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { cn } from "@/shared/lib/cn";
 import { SignUpMultiStep } from "./SignUpMultiStep";
-import { getApiErrorMessage } from "@/shared/lib/api-client";
+import { SocialLoginButtons } from "./SocialLoginButtons";
 import { useSubscriptionPlans, type DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
 import { paymentApi } from "@/features/subscription/services/paymentApi";
 import { BackButton } from "@/shared/components/ui/BackButton";
 import { clearSignupDraft } from "@/features/checkout/lib/billing-session";
 import { TRIAL_AUTHORIZATION_PAISE, TRIAL_AUTHORIZATION_RUPEES } from "@/features/checkout/lib/order-math";
 import { useRazorpayCheckout, type RazorpaySuccessResponse } from "@/features/subscription/hooks/useRazorpayCheckout";
+import {
+  clearOAuthIdentityDraft,
+  consumeOAuthRedirectResult,
+  saveOAuthIdentityDraft,
+  type OAuthIdentityDraft,
+} from "@/features/auth/lib/oauth";
+import { completeOAuthSignup } from "@/features/auth/lib/complete-oauth-signup";
 
 const passwordSchema = yup.object({
   email: yup.string().email("Enter a valid email.").required("Email is required."),
@@ -37,6 +44,17 @@ const passwordSchema = yup.object({
 
 type PasswordValues = yup.InferType<typeof passwordSchema>;
 type AuthMode = "signin" | "signup";
+
+type OAuthApiResponse = AuthResponse & {
+  code?: string;
+  authProvider?: "google" | "microsoft";
+  providerUserId?: string;
+  email?: string;
+  name?: string;
+  emailVerified?: boolean;
+  message?: string;
+};
+
 function getPurchaseMode(returnTo: string, purchaseMode?: string | null) {
   if (purchaseMode === "trial" || purchaseMode === "buy_now") return purchaseMode;
   if (!returnTo.startsWith("/checkout")) return null;
@@ -64,8 +82,7 @@ function authHref(
   return query ? `${ROUTES.signIn}?${query}` : ROUTES.signIn;
 }
 
-
-function PasswordMode({ returnTo, plans }: { returnTo: string; plans: DynamicPlan[] }) {
+function PasswordMode({ returnTo }: { returnTo: string; plans: DynamicPlan[] }) {
   const dispatch = useAppDispatch();
   const router = useRouter();
   const { initializePayment } = useRazorpayCheckout();
@@ -82,103 +99,116 @@ function PasswordMode({ returnTo, plans }: { returnTo: string; plans: DynamicPla
   return (
     <form
       className="grid gap-5"
-        onSubmit={handleSubmit(async (values) => {
-          try {
-            const data = await apiClient<AuthResponse>("/auth/login", {
-              method: "POST",
-              body: JSON.stringify({ email: values.email, password: values.password }),
+      onSubmit={handleSubmit(async (values) => {
+        try {
+          const data = await apiClient<AuthResponse>("/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ email: values.email, password: values.password }),
+          });
+
+          if (data.code === "PAYMENT_PENDING") {
+            setIsResumingTrial(true);
+            clearSignupDraft();
+
+            const trialAuth = await paymentApi.resumeTrialAuth({
+              email: values.email,
+              password: values.password,
             });
 
-            if (data.code === "PAYMENT_PENDING") {
-              setIsResumingTrial(true);
-              clearSignupDraft();
-
-              const trialAuth = await paymentApi.resumeTrialAuth({
-                email: values.email,
-                password: values.password,
-              });
-
-              const razorpayKey =
-                trialAuth?.keyId ?? process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "";
-              if (!razorpayKey.startsWith("rzp_test_") && process.env.NODE_ENV !== "production") {
-                toast.error("Local checkout requires a Razorpay test key (rzp_test_…).");
-                setIsResumingTrial(false);
-                return;
-              }
-
-              const orderId = trialAuth?.orderId ?? trialAuth?.id;
-              if (!orderId) {
-                toast.error("Missing trial order id. Please try again.");
-                setIsResumingTrial(false);
-                return;
-              }
-
-              await initializePayment(
-                {
-                  key: razorpayKey,
-                  currency: trialAuth?.currency ?? "INR",
-                  amount:
-                    typeof trialAuth?.amountPaise === "number"
-                      ? trialAuth.amountPaise
-                      : TRIAL_AUTHORIZATION_PAISE,
-                  order_id: orderId,
-                  name: brand.name,
-                  description: `Free trial authorization — INR ${TRIAL_AUTHORIZATION_RUPEES}`,
-                  prefill: { email: values.email, name: values.email.split("@")[0] },
-                  theme: { color: brand.colors.greenBright },
-                },
-                async (response: RazorpaySuccessResponse) => {
-                  await paymentApi.verifyTrialAuth({
-                    ...response,
-                    pendingTrialId: trialAuth.pendingTrialId,
-                  });
-
-                  const loginData = await apiClient<AuthResponse>("/auth/login", {
-                    method: "POST",
-                    body: JSON.stringify({ email: values.email, password: values.password }),
-                  });
-
-                  await initAuthSession(dispatch, loginData, values.email, true);
-                  router.push(ROUTES.billingConfirmation);
-                },
-                (error) => {
-                  toast.error(error?.message || "Payment cancelled.");
-                  setIsResumingTrial(false);
-                  router.push(ROUTES.pricing);
-                },
-              );
-
+            const razorpayKey =
+              trialAuth?.keyId ?? process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "";
+            if (!razorpayKey.startsWith("rzp_test_") && process.env.NODE_ENV !== "production") {
+              toast.error("Local checkout requires a Razorpay test key (rzp_test_…).");
+              setIsResumingTrial(false);
               return;
             }
 
-            const sessionDetails = await initAuthSession(dispatch, data, values.email, false);
-            const destination = getPostAuthDestination({
-              isNewSignup: false,
-              subscriptionStatus: sessionDetails.subscriptionStatus,
-              activePlan: sessionDetails.activePlan,
-              returnTo,
-            });
-            router.push(destination);
-            toast.success(
-              sessionDetails.subscriptionStatus === "trialing"
-                ? "Signed in. Your trial is still active."
-                : sessionDetails.subscriptionStatus === "expired"
-                  ? "Signed in. Renew your plan to keep using Bragi."
-                  : "Signed in successfully.",
+            const orderId = trialAuth?.orderId ?? trialAuth?.id;
+            if (!orderId) {
+              toast.error("Missing trial order id. Please try again.");
+              setIsResumingTrial(false);
+              return;
+            }
+
+            await initializePayment(
+              {
+                key: razorpayKey,
+                currency: trialAuth?.currency ?? "INR",
+                amount:
+                  typeof trialAuth?.amountPaise === "number"
+                    ? trialAuth.amountPaise
+                    : TRIAL_AUTHORIZATION_PAISE,
+                order_id: orderId,
+                name: brand.name,
+                description: `Free trial authorization — INR ${TRIAL_AUTHORIZATION_RUPEES}`,
+                prefill: { email: values.email, name: values.email.split("@")[0] },
+                theme: { color: brand.colors.greenBright },
+              },
+              async (response: RazorpaySuccessResponse) => {
+                await paymentApi.verifyTrialAuth({
+                  ...response,
+                  pendingTrialId: trialAuth.pendingTrialId,
+                });
+
+                const loginData = await apiClient<AuthResponse>("/auth/login", {
+                  method: "POST",
+                  body: JSON.stringify({ email: values.email, password: values.password }),
+                });
+
+                await initAuthSession(dispatch, loginData, values.email, true);
+                router.push(ROUTES.billingConfirmation);
+              },
+              (error) => {
+                toast.error(error?.message || "Payment cancelled.");
+                setIsResumingTrial(false);
+                router.push(ROUTES.pricing);
+              },
             );
-          } catch (err: unknown) {
-            toast.error(getApiErrorMessage(err, "Invalid email or password."));
+
+            return;
           }
-        })}
+
+          const sessionDetails = await initAuthSession(dispatch, data, values.email, false);
+          const destination = getPostAuthDestination({
+            isNewSignup: false,
+            subscriptionStatus: sessionDetails.subscriptionStatus,
+            activePlan: sessionDetails.activePlan,
+            returnTo,
+          });
+          router.push(destination);
+          toast.success(
+            sessionDetails.subscriptionStatus === "trialing"
+              ? "Signed in. Your trial is still active."
+              : sessionDetails.subscriptionStatus === "expired"
+                ? "Signed in. Renew your plan to keep using Bragi."
+                : "Signed in successfully.",
+          );
+        } catch (err: unknown) {
+          toast.error(getApiErrorMessage(err, "Invalid email or password."));
+        }
+      })}
     >
-      <Input id="signin-email" label="Email" type="email" autoComplete="email" placeholder="you@company.com" error={errors.email?.message} {...register("email")} />
-      <Input id="signin-password" label="Password" type="password" autoComplete="current-password" placeholder="Enter your password" error={errors.password?.message} {...register("password")} />
-      
+      <Input
+        id="signin-email"
+        label="Email"
+        type="email"
+        autoComplete="email"
+        placeholder="you@company.com"
+        error={errors.email?.message}
+        {...register("email")}
+      />
+      <Input
+        id="signin-password"
+        label="Password"
+        type="password"
+        autoComplete="current-password"
+        placeholder="Enter your password"
+        error={errors.password?.message}
+        {...register("password")}
+      />
+
       <div className="flex items-center justify-end -mt-2">
-        <Link 
-          href={ROUTES.forgotPassword} 
-          className="text-xs font-semibold text-[#a8dfb3] hover:text-white"
-        >
+        <Link href={ROUTES.forgotPassword} className="text-xs font-semibold text-[#a8dfb3] hover:text-white">
           Forgot password?
         </Link>
       </div>
@@ -189,7 +219,6 @@ function PasswordMode({ returnTo, plans }: { returnTo: string; plans: DynamicPla
     </form>
   );
 }
-
 
 function SignInPanel({
   returnTo,
@@ -212,12 +241,21 @@ function SignInPanel({
       </p>
 
       <div className="mt-6">
-        <PasswordMode returnTo={returnTo} plans={plans} />
+        <SocialLoginButtons returnTo={returnTo} mode="signin" />
+
+        <div className="mt-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-white/10" />
+          <span className="text-xs font-semibold uppercase tracking-widest text-white/35">or</span>
+          <div className="h-px flex-1 bg-white/10" />
+        </div>
+
+        <div className="mt-5">
+          <PasswordMode returnTo={returnTo} plans={plans} />
+        </div>
       </div>
     </section>
   );
 }
-
 
 function PlanSummaryAside({
   plan,
@@ -302,10 +340,10 @@ function PlanSummaryAside({
   );
 }
 
-
-
 function AuthFormContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const dispatch = useAppDispatch();
   const { plans, loading } = useSubscriptionPlans();
   const mode: AuthMode = searchParams.get("mode") === "signup" ? "signup" : "signin";
   const planSlug = searchParams.get("plan");
@@ -316,8 +354,117 @@ function AuthFormContent() {
   const billingCycle = searchParams.get("cycle") === "monthly" ? "monthly" : "annual";
   const modeHref = (next: AuthMode) => authHref(next, planSlug, searchParams.get("returnTo"), purchaseMode);
   const showPlan = Boolean(plan);
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const oauthHandledRef = useRef(false);
 
-  if (loading) {
+  useEffect(() => {
+    if (oauthHandledRef.current) return;
+
+    let result: ReturnType<typeof consumeOAuthRedirectResult>;
+    try {
+      result = consumeOAuthRedirectResult();
+    } catch (err) {
+      oauthHandledRef.current = true;
+      toast.error(err instanceof Error ? err.message : "Social sign-in failed.");
+      return;
+    }
+
+    if (!result) return;
+    oauthHandledRef.current = true;
+    setOauthBusy(true);
+
+    const safeReturnTo = sanitizeReturnTo(result.returnTo) || returnTo;
+    const resolvedPurchaseMode = purchaseMode === "buy_now" ? "buy_now" : "trial";
+
+    (async () => {
+      try {
+        const data = await apiClient<OAuthApiResponse>("/auth/oauth", {
+          method: "POST",
+          body: JSON.stringify({
+            authProvider: result.provider,
+            idToken: result.idToken,
+          }),
+        });
+
+        if (data.code === "PAYMENT_PENDING") {
+          applyPendingSession(dispatch, {
+            fullName: data.user?.name || data.email?.split("@")[0] || "User",
+            email: data.user?.email || data.email || "",
+            company: data.user?.company || data.user?.email || data.email || "",
+            industry: "",
+            password: "",
+            resume: true,
+            authProvider: result.provider,
+            providerUserId: data.providerUserId,
+            emailVerified: true,
+            idToken: result.idToken,
+            pendingTrialId: data.pendingTrialId,
+          });
+          toast.success("Signed in. Choose a plan to activate your workspace.");
+          router.replace(ROUTES.pricing);
+          return;
+        }
+
+        if (data.code === "OAUTH_SIGNUP_REQUIRED") {
+          const oauth: OAuthIdentityDraft = {
+            authProvider: result.provider,
+            providerUserId: data.providerUserId || "",
+            email: data.email || "",
+            name: data.name || "",
+            emailVerified: data.emailVerified ?? true,
+            idToken: result.idToken,
+          };
+          saveOAuthIdentityDraft(oauth);
+
+          const next = await completeOAuthSignup({
+            dispatch,
+            oauth,
+            plan,
+            returnTo: safeReturnTo,
+            purchaseMode: resolvedPurchaseMode,
+            cycle: billingCycle,
+          });
+          toast.success(
+            plan
+              ? `Signed in with ${result.provider === "microsoft" ? "Microsoft" : "Google"}. Continue to billing.`
+              : `Signed in with ${result.provider === "microsoft" ? "Microsoft" : "Google"}. Choose a plan to continue.`,
+          );
+          router.replace(next);
+          return;
+        }
+
+        if (data.accessToken) {
+          clearOAuthIdentityDraft();
+          const email = data.user?.email || data.email || "";
+          const sessionDetails = await initAuthSession(dispatch, data, email, false);
+          toast.success(
+            sessionDetails.subscriptionStatus === "trialing"
+              ? "Signed in. Your trial is still active."
+              : sessionDetails.subscriptionStatus === "expired"
+                ? "Signed in. Renew your plan to keep using Bragi."
+                : "Signed in successfully.",
+          );
+          router.replace(
+            getPostAuthDestination({
+              isNewSignup: false,
+              subscriptionStatus: sessionDetails.subscriptionStatus,
+              activePlan: sessionDetails.activePlan,
+              returnTo: safeReturnTo,
+            }),
+          );
+          return;
+        }
+
+        toast.error(data.message || "Social sign-in failed.");
+      } catch (err) {
+        toast.error(getApiErrorMessage(err, "Social sign-in failed."));
+      } finally {
+        setOauthBusy(false);
+      }
+    })();
+  }, [billingCycle, dispatch, plan, purchaseMode, returnTo, router]);
+
+  if (oauthBusy || loading) {
     return (
       <main className="bg-black text-white min-h-screen flex items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent" />
@@ -343,7 +490,6 @@ function AuthFormContent() {
               ? "Create an account, then choose a plan to activate your workspace."
               : "Sign in to open your workspace, or finish checkout if payment is still pending."}
         </p>
-        {/* Removed duplicate back link */}
         <div className="mt-5 inline-flex rounded-full border border-white/12 bg-white/[0.04] p-1">
           <Link
             href={modeHref("signin")}

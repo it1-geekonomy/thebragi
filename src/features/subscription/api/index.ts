@@ -16,9 +16,12 @@ export interface PendingSignupFields {
   superAdminEmail: string;
   superAdminName: string;
   industry?: string;
-  adminPassword: string;
+  adminPassword?: string;
   phone?: string;
   city?: string;
+  authProvider?: "local" | "google" | "microsoft";
+  providerUserId?: string;
+  emailVerified?: boolean;
 }
 
 export interface TrialAuthRequest extends Partial<PendingSignupFields> {
