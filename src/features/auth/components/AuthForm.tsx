@@ -243,7 +243,7 @@ function PlanSummaryAside({
           <p className="mt-1 text-sm text-white/52">{plan.description}</p>
         </div>
         <span className="shrink-0 rounded-full border border-[#7dc890]/30 bg-[#7dc890]/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#bce8c5]">
-          {buyNow ? "Buy now" : "14-day trial"}
+          {buyNow ? "Buy now" : "14-day trial (limit 5 users)"}
         </span>
       </div>
 
@@ -338,7 +338,7 @@ function AuthFormContent() {
           {showPlan
             ? buyNow
               ? "Sign in or create an account to buy this plan. Your selection is saved."
-              : "Sign in or create an account to start a 14-day trial. Your plan selection is saved."
+              : "Sign in or create an account to start a 14-day trial (limit 5 users). Your plan selection is saved."
             : mode === "signup"
               ? "Create an account, then choose a plan to activate your workspace."
               : "Sign in to open your workspace, or finish checkout if payment is still pending."}

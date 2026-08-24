@@ -110,7 +110,7 @@ export function PricingTeaserSection() {
                         : ROUTES.signUp(plan.slug, { cycle: billingCycle })
                     }
                   >
-                    Start 14-day free trial
+                    Start 14-day free trial (limit 5 users)
                   </Link>
                   <Link
                     className="inline-flex w-full items-center justify-center rounded-md border border-white/20 px-4 py-3 text-sm font-semibold text-white hover:bg-white/8"

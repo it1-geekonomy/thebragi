@@ -148,7 +148,7 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
                     : `Your ${pendingSignup.planName} trial signup is saved — authorize INR 1 to activate.`
                   : hasAccount
                     ? "Your account is ready — pick a trial or buy a plan below to activate your workspace."
-                    : "Start a 14-day trial with a INR 1 authorization. Cancel any time."}
+                    : "Start a 14-day trial (limit 5 users) with a INR 1 authorization. Cancel any time."}
             </p>
             {subscribed ? (
               <Button className="mt-8" onClick={() => router.push(ROUTES.dashboard)}>
@@ -242,7 +242,7 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
                   className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-5 py-3 text-sm font-semibold text-white hover:bg-[#6bad72] sm:w-auto sm:min-w-52"
                   href={ROUTES.signUp(selectedPlan.slug, { cycle: billingCycle })}
                 >
-                  Start 14-day free trial
+                  Start 14-day free trial (limit 5 users)
                 </Link>
                 <Link
                   className="inline-flex w-full items-center justify-center rounded-md border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/8 sm:w-auto sm:min-w-36"
@@ -271,7 +271,7 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
                   className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-5 py-3 text-sm font-semibold text-white hover:bg-[#6bad72] sm:w-auto sm:min-w-52"
                   href={ROUTES.checkout(selectedPlan.slug, { cycle: billingCycle, mode: "trial" })}
                 >
-                  Start 14-day free trial
+                  Start 14-day free trial (limit 5 users)
                 </Link>
                 <Link
                   className="inline-flex w-full items-center justify-center rounded-md border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/8 sm:w-auto sm:min-w-36"
