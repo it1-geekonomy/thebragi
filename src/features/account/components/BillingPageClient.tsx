@@ -16,7 +16,7 @@ import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscript
 import { formatCurrency } from "@/shared/lib/format-currency";
 
 export function BillingPageClient() {
-  const { organizationId } = useAppSelector((state) => state.session);
+  const { organizationId, subscriptionStatus } = useAppSelector((state) => state.session);
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const { plans, loading: plansLoading } = useSubscriptionPlans();
   const [loading, setLoading] = useState(true);
@@ -100,7 +100,9 @@ export function BillingPageClient() {
           </p>
           <h1 className="mt-3 text-3xl font-semibold text-white">Billing</h1>
           <p className="mt-2 text-sm text-white/52">
-            Manage your subscription and billing details.
+            {!organizationId
+              ? "Complete checkout to activate billing for this account."
+              : "Manage your subscription and billing details."}
           </p>
         </div>
         <Link
@@ -125,32 +127,39 @@ export function BillingPageClient() {
             )}
           </div>
           <p className="mt-4 text-3xl font-semibold text-white">
-            {status?.plan || dynamicPlan?.name || "No Plan"}
+            {status?.plan || dynamicPlan?.name || (!organizationId ? "Checkout pending" : "No Plan")}
           </p>
+          {!organizationId ? (
+            <p className="mt-3 text-sm text-white/52">
+              {subscriptionStatus === "expired"
+                ? "Your previous subscription has ended. Choose a plan to continue."
+                : "No organization yet — finish trial authorization or payment to enable billing."}
+            </p>
+          ) : null}
 
-          {dynamicPlan && (
+          {(dynamicPlan || status?.priceAtActivation !== undefined) && (
             <div className="mt-4 border-t border-white/10 pt-4">
               <div className="grid gap-2 text-sm text-white/70">
                 <div className="flex justify-between">
                   <span>Base package:</span>
                   <span className="font-medium text-white">
-                    {formatCurrency(dynamicPlan.priceMonthly)}/mo
+                    {formatCurrency(status?.priceAtActivation ?? dynamicPlan?.priceMonthly ?? 0)}/{status?.billingCycle === "annual" ? "yr" : "mo"}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Included seats:</span>
+                  <span>Included users:</span>
                   <span className="font-medium text-white">
                     Up to{" "}
-                    {dynamicPlan.maxUsers > 0
-                      ? dynamicPlan.maxUsers
+                    {(status?.maxUsers ?? dynamicPlan?.maxUsers ?? 0) > 0
+                      ? (status?.maxUsers ?? dynamicPlan?.maxUsers)
                       : "Unlimited"}{" "}
                     users
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Additional seats:</span>
+                  <span>Additional users:</span>
                   <span className="font-medium text-white">
-                    {formatCurrency(dynamicPlan.perUserCostMonthly)}/user/mo
+                    {formatCurrency(status?.perUserCost ?? dynamicPlan?.perUserCostMonthly ?? 0)}/user/{status?.billingCycle === "annual" ? "yr" : "mo"}
                   </span>
                 </div>
               </div>

@@ -12,7 +12,7 @@ import { cn } from "@/shared/lib/cn";
 
 export function OrderSummaryPanel({
   plan,
-  seats,
+  users,
   cycle,
   subtotal,
   tax,
@@ -29,12 +29,12 @@ export function OrderSummaryPanel({
   purchaseMode,
 }: {
   plan: DynamicPlan;
-  seats: number;
+  users: number;
   cycle: BillingCycle;
   subtotal: number;
   tax: TaxBreakdown;
   total: number;
-  onSeatsChange: (seats: number) => void;
+  onSeatsChange: (users: number) => void;
   onCycleChange: (cycle: BillingCycle) => void;
   className?: string;
   basePrice: number;
@@ -47,7 +47,7 @@ export function OrderSummaryPanel({
 }) {
   const includedUsers = plan.includedUsers || plan.maxUsers;
   const isTrial = purchaseMode === "trial";
-  const atMax = Boolean(maximumSeats && seats >= maximumSeats);
+  const atMax = Boolean(maximumSeats && users >= maximumSeats);
 
   return (
     <aside className={cn("rounded-lg border border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:sticky lg:top-24", className)}>
@@ -67,25 +67,25 @@ export function OrderSummaryPanel({
 
       {isTrial ? null : (
       <div className="mt-4 flex items-center justify-between gap-3">
-        <span className="text-sm text-white/58">Seats</span>
+        <span className="text-sm text-white/58">Users</span>
         <div className="inline-flex items-center gap-2">
           <Button
             type="button"
             variant="secondary"
             className="min-h-9 w-9 px-0"
-            aria-label="Decrease seats"
-            onClick={() => onSeatsChange(Math.max(minimumSeats, seats - 1))}
-            disabled={seats <= minimumSeats}
+            aria-label="Decrease users"
+            onClick={() => onSeatsChange(Math.max(minimumSeats, users - 1))}
+            disabled={users <= minimumSeats}
           >
             -
           </Button>
-          <span className="min-w-8 text-center text-sm font-semibold text-white">{seats}</span>
+          <span className="min-w-8 text-center text-sm font-semibold text-white">{users}</span>
           <Button
             type="button"
             variant="secondary"
             className="min-h-9 w-9 px-0"
-            aria-label={atMax ? "Maximum seats reached" : "Increase seats"}
-            onClick={() => onSeatsChange(seats + 1)}
+            aria-label={atMax ? "Maximum users reached" : "Increase users"}
+            onClick={() => onSeatsChange(users + 1)}
             disabled={atMax}
           >
             +

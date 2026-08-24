@@ -11,11 +11,12 @@ type SessionUser = {
 export type AuthResponse = {
   accessToken?: string;
   code?: string;
+  message?: string;
+  pendingTrialId?: string;
   user?: SessionUser & { email?: string; company?: string };
   requires_org_selection?: boolean;
   session_key?: string;
   orgs?: { id: string }[];
-  pendingTrialId?: string;
 };
 
 export type SessionDetails = {

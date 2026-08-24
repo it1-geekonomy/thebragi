@@ -74,12 +74,15 @@ export function getPostAuthDestination({
 }: PostAuthInput) {
   const safeReturnTo = sanitizeReturnTo(returnTo);
 
-  if (safeReturnTo?.startsWith("/checkout")) {
-    return safeReturnTo;
+  if (hasActiveSubscription(subscriptionStatus, activePlan)) {
+    if (isNewSignup && subscriptionStatus === "trialing") return ROUTES.billingConfirmation;
+    if (isNewSignup && subscriptionStatus === "active") return "/checkout/success";
+    return ROUTES.dashboard;
   }
 
-  if (hasActiveSubscription(subscriptionStatus, activePlan)) {
-    return isNewSignup ? ROUTES.billingConfirmation : ROUTES.dashboard;
+  // If user still needs to complete checkout (no subscription yet), honor the checkout returnTo.
+  if (safeReturnTo?.startsWith("/checkout") && subscriptionStatus === "none") {
+    return safeReturnTo;
   }
 
   // Never-subscribed / unpaid → pricing. Truly expired → expired page.

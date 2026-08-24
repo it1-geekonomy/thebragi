@@ -14,8 +14,6 @@ export function getApiUrl() {
   return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 }
 
-export const API_URL = getApiUrl();
-
 function isNetworkFailure(error: unknown) {
   return error instanceof TypeError || (error instanceof DOMException && error.name === "AbortError");
 }

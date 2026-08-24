@@ -3,7 +3,7 @@ export type PurchaseMode = "trial" | "buy_now";
 
 export type CheckoutParams = {
   plan: string;
-  seats: number;
+  users: number;
   cycle: BillingCycle;
   mode: PurchaseMode;
 };
@@ -11,19 +11,19 @@ export type CheckoutParams = {
 export const DEFAULT_PURCHASE_MODE: PurchaseMode = "buy_now";
 
 export function parseSeatCount(raw?: string | null) {
-  const seats = Number(raw);
-  return Number.isFinite(seats) && seats > 0 ? Math.floor(seats) : 0;
+  const users = Number(raw);
+  return Number.isFinite(users) && users > 0 ? Math.floor(users) : 0;
 }
 
 export function parseCheckoutParams(input: {
   plan?: string | null;
-  seats?: string | null;
+  users?: string | null;
   cycle?: string | null;
   mode?: string | null;
 }): CheckoutParams {
   return {
     plan: (input.plan || "").trim(),
-    seats: parseSeatCount(input.seats),
+    users: parseSeatCount(input.users),
     cycle: input.cycle === "monthly" ? "monthly" : "annual",
     mode: input.mode === "trial" ? "trial" : "buy_now",
   };
@@ -37,7 +37,7 @@ export function buildCheckoutPath(params: Partial<CheckoutParams> & { plan: stri
     cycle,
     mode,
   });
-  if (params.seats && params.seats > 0) query.set("seats", String(params.seats));
+  if (params.users && params.users > 0) query.set("users", String(params.users));
   return `/checkout?${query.toString()}`;
 }
 

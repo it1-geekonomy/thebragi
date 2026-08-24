@@ -1,7 +1,7 @@
 import { fetchGstinValidation } from "@/features/checkout/api/gst-validation";
 import { INDIAN_STATES } from "@/features/checkout/lib/gst-states";
 
-export { INDIAN_STATES, SELLER_STATE_CODE, SELLER_STATE_NAME, GST_RATE, HALF_GST_RATE, SAC_CODE, stateNameFromCode } from "@/features/checkout/lib/gst-states";
+export { SAC_CODE, stateNameFromCode } from "@/features/checkout/lib/gst-states";
 export type { TaxBreakdown } from "./order-math";
 
 export type GstinLookup = {

@@ -1,6 +1,6 @@
 export const brand = {
   name: "Bragi",
-  email: "hello@thebragi.com",
+  email: "connect@thegeekonomy.com",
   colors: {
     black: "#050705",
     surface: "#0b100c",
