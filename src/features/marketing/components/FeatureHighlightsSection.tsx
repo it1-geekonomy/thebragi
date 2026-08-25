@@ -17,7 +17,7 @@ export function FeatureHighlightsSection() {
       <div className="mx-auto mt-10 grid max-w-6xl gap-5 md:grid-cols-2">
         {highlights.map(([title, body]) => (
           <Card key={title} className="p-6">
-            <h3 className="text-xl font-semibold text-white">{title}</h3>
+            <h3 className="text-lg font-semibold text-white sm:text-xl">{title}</h3>
             <p className="mt-3 text-sm leading-6 text-white/60">{body}</p>
           </Card>
         ))}

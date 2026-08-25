@@ -124,7 +124,7 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
 
           <div className="mt-12 flex flex-col items-center text-center">
             <BragiLogo />
-            <h1 className="mt-8 max-w-3xl text-4xl font-semibold leading-tight sm:text-5xl">
+            <h1 className="mt-8 max-w-3xl text-[clamp(1.75rem,5vw,2.75rem)] font-semibold leading-tight sm:text-4xl lg:text-5xl">
               {subscribed
                 ? isTrial
                   ? "Your trial is active"
@@ -159,9 +159,9 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
                 {pendingBuyNow ? "Continue to payment" : "Complete trial checkout"}
               </Button>
             ) : null}
-            <div className="mx-auto mb-16 mt-16 max-w-4xl border-y border-white/10 py-10">
-              <h2 className="text-2xl font-semibold text-white text-center">Is Bragi worth it?</h2>
-              <div className="mt-10 grid gap-8 sm:grid-cols-3 text-left">
+            <div className="mx-auto mb-10 mt-10 max-w-4xl border-y border-white/10 py-8 sm:mb-16 sm:mt-16 sm:py-10">
+              <h2 className="text-xl font-semibold text-white text-center sm:text-2xl">Is Bragi worth it?</h2>
+              <div className="mt-8 grid gap-6 md:grid-cols-3 sm:mt-10 sm:gap-8 text-left">
                 <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
                   <h3 className="font-semibold text-white">Save Time & Money</h3>
                   <p className="mt-3 text-sm leading-6 text-white/60">Automate your workflows and reduce manual entry. Teams save an average of 15 hours per week.</p>
@@ -177,7 +177,8 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
               </div>
             </div>
 
-            <div className={`inline-flex rounded-full border border-white/12 bg-white/[0.04] p-1 ${subscribed ? "mt-4" : ""}`}>
+            <div className="mt-8 flex w-full max-w-md flex-col items-stretch sm:max-w-none sm:items-center">
+              <div className="inline-flex w-full max-w-full flex-wrap justify-center rounded-full border border-white/12 bg-white/[0.04] p-1 sm:w-auto">
               <Toggle
                 pressed={billingCycle === "monthly"}
                 onClick={() => setBillingCycle("monthly")}
@@ -192,6 +193,7 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
               >
                 Annual{selectedPlan?.annualDiscountPercentage ? ` — save ${selectedPlan.annualDiscountPercentage}%` : ""}
               </Toggle>
+            </div>
             </div>
           </div>
         </div>
@@ -213,7 +215,7 @@ export function PricingPageClient({ highlightedPlan }: { highlightedPlan?: strin
           ) : null}
         </div>
 
-        <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-3">
+        <div className="mx-auto grid max-w-7xl gap-5 md:grid-cols-2 lg:grid-cols-3">
           {displayPlans.map((plan) => (
             <PlanCard
               key={plan.slug}

@@ -29,8 +29,8 @@ export function PricingTeaserSection() {
         Pricing is shown in INR. Per user / month. Terms apply.
       </SectionHeading>
       
-      <div className="mt-8 flex justify-center">
-        <div className="inline-flex rounded-full border border-white/12 bg-white/[0.04] p-1">
+      <div className="mt-8 flex w-full max-w-md flex-col items-stretch justify-center gap-2 sm:max-w-none sm:flex-row sm:flex-wrap sm:justify-center">
+        <div className="inline-flex w-full max-w-full flex-wrap justify-center rounded-full border border-white/12 bg-white/[0.04] p-1 sm:w-auto">
           <Toggle
             pressed={billingCycle === "monthly"}
             onClick={() => setBillingCycle("monthly")}
@@ -48,7 +48,7 @@ export function PricingTeaserSection() {
         </div>
       </div>
 
-      <div className="mx-auto mt-10 grid max-w-6xl gap-5 lg:grid-cols-3">
+      <div className="mx-auto mt-10 grid max-w-6xl gap-5 md:grid-cols-2 lg:grid-cols-3">
         {plans.map((plan) => {
           const isAnnual = billingCycle === "annual";
           const price = isAnnual && plan.priceAnnual ? plan.priceAnnual : plan.priceMonthly;
@@ -57,14 +57,14 @@ export function PricingTeaserSection() {
 
           return (
             <Card key={plan.slug} className="p-6">
-              <div className="flex min-h-8 items-center justify-between gap-3">
-                <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
+              <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
+                <h3 className="min-w-0 text-lg font-semibold text-white sm:text-xl">{plan.name}</h3>
               </div>
               <p className="mt-3 min-h-12 text-sm leading-6 text-white/58">
                 Includes up to {plan.maxUsers || "unlimited"} users.
               </p>
               <div className="mt-5 flex flex-col gap-2">
-                <p className="text-3xl font-semibold text-white">
+                <p className="text-2xl font-semibold text-white sm:text-3xl">
                   {formatCurrency(price)}{" "}
                   <span className="text-sm text-white/42">{isAnnual ? "/year" : "/month"}</span>
                 </p>

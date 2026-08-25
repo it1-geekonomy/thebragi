@@ -12,7 +12,7 @@ export function MarketingFooter() {
           <p className="mt-5 max-w-sm text-sm leading-6 text-white/52">Sales, projects, and the work between them in one Bragi workspace.</p>
           <p className="mt-6 text-sm text-white/38">2026 Bragi | Built by Geekonomy</p>
         </div>
-        <div className="grid grid-cols-2 gap-7 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {footerColumns.map((column) => (
             <div key={column.title}>
               <h3 className="text-sm font-semibold text-white">{column.title}</h3>
