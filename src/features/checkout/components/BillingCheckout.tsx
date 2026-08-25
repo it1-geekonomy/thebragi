@@ -32,18 +32,19 @@ import {
 } from "@/features/checkout/lib/order-math";
 import {
   lookupGstin,
+  panFromGstin,
   resolveLocationFromAddress,
-  stateNameFromCode,
+  resolveLocationFromPostalCode,
   type GstinLookup,
-  type TaxBreakdown,
 } from "@/features/checkout/lib/gst";
 import { saveVerifiedBilling } from "@/features/checkout/lib/billing-session";
 import { clearSignupDraft, readSignupDraft } from "@/features/checkout/lib/billing-session";
-import { INDIAN_STATES, SELLER_STATE_CODE } from "@/features/checkout/lib/gst-states";
-import { Select } from "@/shared/components/ui/Select";
+import { SearchableSelect } from "@/shared/components/ui/SearchableSelect";
 import { OrderSummaryPanel } from "@/features/checkout/components/OrderSummaryPanel";
 import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
 import { fetchAuthSessionDetails } from "@/features/auth/lib/post-auth-routing";
+
+import { subscriptionApi, type SubscriptionQuote } from "@/features/subscription/api";
 
 // GSTN live lookup disabled until GST_VALIDATION_API_KEY is configured on the CRM backend.
 const SKIP_GST_VALIDATION = true;
@@ -68,12 +69,10 @@ function applyGstLookup(
   if (result.pan) setters.setPan(result.pan);
   if (result.address) setters.setAddress(result.address);
   const code = result.gstin.slice(0, 2);
-  const name = stateNameFromCode(code);
-  if (name !== "Unknown") {
+  if (code) {
     setters.setStateCode(code);
-    setters.setStateName(name);
   }
-  setters.setCountry("India");
+  setters.setCountry("IN");
 }
 
 export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
@@ -103,21 +102,24 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   const [stateCode, setStateCode] = useState("");
   const [stateName, setStateName] = useState("");
   const [postalCode, setPostalCode] = useState("");
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState("IN");
   const [city, setCity] = useState("");
+  const [countries, setCountries] = useState<{ code: string; name: string }[]>([]);
+  const [states, setStates] = useState<{ code: string; name: string }[]>([]);
   const [gstLookup, setGstLookup] = useState<GstinLookup | null>(null);
   const [gstChecking, setGstChecking] = useState(false);
   const [locationResolving, setLocationResolving] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
+  const [quote, setQuote] = useState<SubscriptionQuote | null>(null);
+  const [loadingQuote, setLoadingQuote] = useState(false);
   const gstRequestId = useRef(0);
   const addressRequestId = useRef(0);
 
   const totals = plan
-    ? computeOrderTotals(plan, resolvedSeats, cycle, stateCode, SELLER_STATE_CODE)
+    ? computeOrderTotals(plan, resolvedSeats, cycle)
     : ({
         subtotal: 0,
         recurringSubtotal: 0,
-        tax: { kind: "intra", totalTax: 0, cgst: 0, sgst: 0, igst: 0 } as TaxBreakdown,
         total: 0,
         basePrice: 0,
         perUser: 0,
@@ -126,13 +128,77 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
       } satisfies {
         subtotal: number;
         recurringSubtotal: number;
-        tax: TaxBreakdown;
         total: number;
         basePrice: number;
         perUser: number;
         overageSeats: number;
         setupFee: number;
       });
+
+  useEffect(() => {
+    if (!plan?.id) return;
+    let active = true;
+    setLoadingQuote(true);
+    const timer = window.setTimeout(() => {
+      subscriptionApi
+        .calculateQuote({
+          planId: plan.id,
+          seats: resolvedSeats,
+          users: resolvedSeats,
+          billingCycle: cycle,
+          stateCode: stateCode || undefined,
+        })
+        .then((data) => {
+          if (active) setQuote(data);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch calculation quote:", err);
+        })
+        .finally(() => {
+          if (active) setLoadingQuote(false);
+        });
+    }, 150);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [plan?.id, resolvedSeats, cycle, stateCode]);
+
+  useEffect(() => {
+    fetch("/api/location/countries")
+      .then((res) => res.json())
+      .then((data) => setCountries(data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!country) {
+      setStates([]);
+      return;
+    }
+    fetch(`/api/location/states?country=${country}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setStates(data);
+          if (stateName && !stateCode) {
+            const match = data.find(
+              (s: { code: string; name: string }) =>
+                s.name.toLowerCase() === stateName.toLowerCase()
+            );
+            if (match) setStateCode(match.code);
+          } else if (stateCode && !stateName) {
+            const match = data.find(
+              (s: { code: string; name: string }) =>
+                s.code.toLowerCase() === stateCode.toLowerCase()
+            );
+            if (match) setStateName(match.name);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [country, stateCode, stateName]);
 
   useEffect(() => {
     if (!isAuthenticated && !signupDraft) {
@@ -190,8 +256,14 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   }, [dispatch, isAuthenticated, organizationId, signupDraft]);
 
   useEffect(() => {
-    if (SKIP_GST_VALIDATION) return;
     const value = gstin.trim().toUpperCase();
+
+    const extractedPan = panFromGstin(value);
+    if (extractedPan) {
+      setPan(extractedPan);
+    }
+
+    if (SKIP_GST_VALIDATION) return;
     if (value.length < 15) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- drop GST validity until a full number is entered
       setGstLookup(null);
@@ -239,6 +311,18 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     return () => window.clearTimeout(timer);
   }, [address]);
 
+  useEffect(() => {
+    const code = postalCode.trim();
+    if (!/^\d{6}$/.test(code)) return;
+
+    void resolveLocationFromPostalCode(code).then((location) => {
+      if (location.stateName) setStateName(location.stateName);
+      if (location.stateCode) setStateCode(location.stateCode);
+      if (location.country) setCountry(location.country);
+      if (location.city && !city) setCity(location.city);
+    });
+  }, [postalCode]);
+
   async function handlePay() {
     if (!plan) return;
     const normalizedGstin = gstin.trim().toUpperCase();
@@ -278,8 +362,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     const finalLegalName = legalName.trim() || verified?.legalName.trim() || "";
     const finalPan = pan.trim() || verified?.pan.trim() || "";
     const finalStateCode = stateCode.trim() || verified?.gstin.slice(0, 2) || "";
-    const finalStateName =
-      stateName.trim() || (stateNameFromCode(finalStateCode) !== "Unknown" ? stateNameFromCode(finalStateCode) : "");
+    const finalStateName = stateName.trim() || states.find(s => s.code === finalStateCode)?.name || "";
     const finalCountry = country.trim() || "India";
     const finalCity = city.trim();
     if (!finalLegalName || !finalPan) {
@@ -355,7 +438,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 })
               : signupDraft
                 ? await paymentApi.createTrialAuth({
-                    name: billing.legalName.trim() || signupDraft.company,
+                    name: signupDraft.company?.trim() || billing.legalName.trim(),
                     superAdminEmail: signupDraft.email,
                     superAdminName: signupDraft.fullName,
                     industry: signupDraft.industry || undefined,
@@ -396,7 +479,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 ? { organizationId }
                 : signupDraft
                   ? {
-                      name: billing.legalName.trim() || signupDraft.company,
+                      name: signupDraft.company?.trim() || billing.legalName.trim(),
                       superAdminEmail: signupDraft.email,
                       superAdminName: signupDraft.fullName,
                       industry: signupDraft.industry || undefined,
@@ -435,8 +518,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         (typeof trialOrder?.amount === "number" && trialOrder.amount >= 100
           ? trialOrder.amount
           : TRIAL_AUTHORIZATION_PAISE);
-      const buyNowRupees = buyNowOrder?.quote?.total ?? buyNowOrder?.amount ?? totals.total;
-      const buyNowPaise = buyNowOrder?.amountPaise ?? Math.round(buyNowRupees * 100);
+      const buyNowRupees = buyNowOrder?.quote?.total ?? buyNowOrder?.amount ?? quote?.totalAmount ?? totals.total;
+      const buyNowPaise = buyNowOrder?.amountPaise ?? quote?.amountPaise ?? Math.round(buyNowRupees * 100);
 
       await initializePayment(
         {
@@ -563,7 +646,25 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         },
       );
     } catch (error: unknown) {
-      toast.error(getApiErrorMessage(error, "Payment failed."));
+      const msg = getApiErrorMessage(error, "Payment failed.");
+      if (/already exists|already registered/i.test(msg)) {
+        toast.error(msg, {
+          action: {
+            label: "Sign in",
+            onClick: () =>
+              router.push(
+                buildSignInForCheckout({
+                  plan: initial.plan,
+                  users: resolvedSeats,
+                  cycle,
+                  mode: purchaseMode,
+                }),
+              ),
+          },
+        });
+      } else {
+        toast.error(msg);
+      }
       setIsPaying(false);
     }
   }
@@ -588,22 +689,10 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-start">
       <section className="order-2 rounded-lg border border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:order-1">
-        <div className="inline-flex items-center gap-3">
-          <p className="text-sm font-semibold text-white">Billing & GST details</p>
-          <Link href={ROUTES.pricing} className="text-xs font-semibold text-white/42 hover:text-[#a8dfb3] sm:ml-2">
-            Step 1 · Plan
-          </Link>
-        </div>
-
         <div className="mt-8">
           <h1 className="text-2xl font-semibold text-white sm:text-3xl">
-            {purchaseMode === "trial" ? "Trial billing details" : "Billing details"}
+            Billing details
           </h1>
-          <p className="mt-2 text-sm leading-6 text-white/58">
-            {purchaseMode === "trial"
-              ? `GSTIN validates legal name and PAN from GSTN. This path authorizes only ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} for trial activation.`
-              : "GSTIN validates legal name and PAN from GSTN. The backend receives plan, seats, billing cycle, and billing details before Razorpay is opened."}
-          </p>
         </div>
 
         {!organizationId && !signupDraft ? (
@@ -678,6 +767,33 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
             </label>
 
             <div className="grid gap-5 sm:grid-cols-2">
+              <label className="block text-sm text-white/80" htmlFor="country">
+                <span className="mb-2 block font-medium">Country</span>
+                <SearchableSelect
+                  id="country"
+                  value={country}
+                  onChange={(val: string) => {
+                    setCountry(val);
+                    setStateCode("");
+                    setStateName("");
+                  }}
+                  options={countries.map(c => ({ value: c.code, label: c.name }))}
+                  placeholder="Select country"
+                />
+              </label>
+              <label className="block text-sm text-white/80" htmlFor="state">
+                <span className="mb-2 block font-medium">State / Province</span>
+                <SearchableSelect
+                  id="state"
+                  value={stateCode}
+                  onChange={(val: string) => {
+                    setStateCode(val);
+                    setStateName(states.find((s) => s.code === val)?.name || "");
+                  }}
+                  options={states.map(s => ({ value: s.code, label: s.name }))}
+                  placeholder="Select state"
+                />
+              </label>
               <Input
                 id="city"
                 label="City"
@@ -685,26 +801,6 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 onChange={(event) => setCity(event.target.value)}
                 placeholder="Bengaluru"
               />
-              <label className="block text-sm text-white/80" htmlFor="state">
-                <span className="mb-2 block font-medium">State - place of supply</span>
-                <Select
-                  id="state"
-                  className="w-full"
-                  value={stateCode}
-                  onChange={(event) => {
-                    const code = event.target.value;
-                    setStateCode(code);
-                    setStateName(code ? stateNameFromCode(code) : "");
-                  }}
-                >
-                  <option value="">Select state</option>
-                  {INDIAN_STATES.map((state) => (
-                    <option key={state.code} value={state.code}>
-                      {state.name}
-                    </option>
-                  ))}
-                </Select>
-              </label>
               <Input
                 id="postal"
                 label="Postal code"
@@ -714,13 +810,6 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 inputMode="numeric"
                 maxLength={6}
               />
-              <Input
-                id="country"
-                label="Country"
-                value={country}
-                onChange={(event) => setCountry(event.target.value)}
-                placeholder="India"
-              />
             </div>
 
             <Button className="w-full" disabled={isPaying} type="submit">
@@ -728,7 +817,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 ? "Processing..."
                 : purchaseMode === "trial"
                   ? `Authorize ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} & start trial`
-                  : `Pay ${formatCurrency(totals.total)} & activate`}
+                  : `Pay ${formatCurrency(quote?.totalAmount ?? totals.total)} & activate`}
             </Button>
           </form>
         )}
@@ -739,7 +828,6 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         users={resolvedSeats}
         cycle={cycle}
         subtotal={totals.subtotal}
-        tax={totals.tax}
         total={totals.total}
         basePrice={totals.basePrice}
         perUserPrice={totals.perUser}
@@ -748,6 +836,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         minimumSeats={minimumSeats}
         maximumSeats={maximumSeats}
         purchaseMode={purchaseMode}
+        quote={quote}
+        loadingQuote={loadingQuote}
         onSeatsChange={(next) => setSeats(clampSeats(next, minimumSeats, maximumSeats))}
         onCycleChange={setCycle}
         className="order-1 lg:order-2"

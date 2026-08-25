@@ -153,6 +153,7 @@ export const paymentApi = {
     city?: string;
     planId: string;
     users: number;
+    seats?: number;
     billingCycle: "monthly" | "annual";
     billing: {
       legalName: string;
@@ -173,20 +174,25 @@ export const paymentApi = {
       currency: string;
       keyId: string;
       users?: number;
+      seats?: number;
       quote?: {
-        baseUsers: number;
-        seatCount: number;
-        additionalSeats: number;
-        subtotal: number;
-        cgst: number;
-        sgst: number;
-        igst: number;
-        total: number;
+        baseUsers?: number;
+        seatCount?: number;
+        additionalSeats?: number;
+        subtotal?: number;
+        cgst?: number;
+        sgst?: number;
+        igst?: number;
+        total?: number;
       };
       pendingTrialId?: string;
     }>("/razorpay/create-buy-now-order", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        ...data,
+        seats: data.seats ?? data.users,
+        users: data.users ?? data.seats,
+      }),
     }),
 
   verifyBuyNowPayment: (data: {
@@ -194,13 +200,18 @@ export const paymentApi = {
     pendingTrialId?: string;
     planId: string;
     users?: number;
+    seats?: number;
     razorpay_order_id: string;
     razorpay_payment_id: string;
     razorpay_signature: string;
   }) =>
     apiClient<{ organizationId?: string }>("/razorpay/verify-buy-now", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        ...data,
+        seats: data.seats ?? data.users,
+        users: data.users ?? data.seats,
+      }),
     }),
 };
 
