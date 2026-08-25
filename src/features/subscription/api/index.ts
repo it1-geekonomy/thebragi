@@ -130,6 +130,7 @@ export interface Plan {
 
 export interface SubscriptionStatus {
   status: string;
+  planId?: string;
   plan?: string;
   startDate?: string;
   endDate?: string;
@@ -140,11 +141,44 @@ export interface SubscriptionStatus {
   priceAtActivation?: number;
   billingCycle?: string;
   maxUsers?: number;
+  allocatedSeats?: number;
   perUserCost?: number;
+}
+
+export interface SubscriptionQuote {
+  planId?: string;
+  planName?: string;
+  billingCycle?: "monthly" | "annual";
+  basePrice: number;
+  setupCost: number;
+  seats: number;
+  includedSeats: number;
+  extraSeats: number;
+  extraSeatCharge: number;
+  annualDiscount: number;
+  taxable: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+  taxAmount: number;
+  totalAmount: number;
+  amountPaise: number;
 }
 
 export const subscriptionApi = {
   getPlans: () => apiClient<Plan[]>("/subscription/plans"),
+
+  calculateQuote: (data: {
+    planId: string;
+    seats?: number;
+    users?: number;
+    billingCycle?: "monthly" | "annual";
+    stateCode?: string;
+  }) =>
+    apiClient<SubscriptionQuote>("/subscription/calculate-quote", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   getSubscriptionStatus: (organizationId: string) =>
     apiClient<SubscriptionStatus>(`/subscription/status/${organizationId}`),

@@ -65,24 +65,36 @@ export function PlanCard({
         ) : null}
       </div>
       <p className="mt-3 min-h-12 text-sm leading-6 text-white/58">
-        {plan.pricingModel === "included_overage"
-          ? `Includes up to ${includedUsers} users.`
-          : `Starts at ${plan.minimumSeats} users.`}
+        {plan.isEnterprise
+          ? null
+          : plan.pricingModel === "included_overage"
+            ? `Includes up to ${includedUsers} users.`
+            : `Starts at ${plan.minimumSeats} users.`}
       </p>
       <div className="mt-6 flex flex-col gap-2">
-        <div className="flex flex-wrap items-end gap-2">
-          <span className="text-3xl font-semibold text-white sm:text-4xl">{formatCurrency(displayPrice)}</span>
-          <span className="pb-1 text-sm text-white/46">{isAnnual ? "/year" : "/month"}</span>
-        </div>
+        {plan.isEnterprise ? (
+          <p className="text-3xl font-semibold text-white sm:text-4xl">Custom</p>
+        ) : (
+          <div className="flex flex-wrap items-end gap-2">
+            <span className="text-3xl font-semibold text-white sm:text-4xl">{formatCurrency(displayPrice)}</span>
+            <span className="pb-1 text-sm text-white/46">{isAnnual ? "/year" : "/month"}</span>
+          </div>
+        )}
         {plan.setupFee > 0 ? (
           <span className="inline-flex w-fit items-center rounded-md bg-[#7dc890]/10 px-2.5 py-1 text-xs font-medium text-[#7dc890]">
             + {formatCurrency(plan.setupFee)} one-time setup fee
           </span>
         ) : null}
       </div>
-      <p className="mt-2 text-sm text-white/46">
-        + {formatCurrency(perUserPrice)}{isAnnual ? "/yr" : "/mo"} for each additional user
-      </p>
+      {plan.isEnterprise ? (
+        <p className="mt-2 text-sm text-white/46">
+          Tailored to your specific needs
+        </p>
+      ) : (
+        <p className="mt-2 text-sm text-white/46">
+          + {formatCurrency(perUserPrice)}{isAnnual ? "/yr" : "/mo"} for each additional user
+        </p>
+      )}
       {isAnnual && discount > 0 ? (
         <p className="mt-2 text-xs font-semibold text-[#a8dfb3]">Billed annually — save {discount}%.</p>
       ) : null}

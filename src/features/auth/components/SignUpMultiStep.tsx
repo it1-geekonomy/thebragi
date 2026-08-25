@@ -10,7 +10,12 @@ import { toast } from "sonner";
 import { ROUTES } from "@/config/routes";
 import { useAppDispatch } from "@/store/hooks";
 import { apiClient, getApiErrorMessage } from "@/shared/lib/api-client";
-import { initAuthSession, applyPendingSession, type AuthResponse } from "@/features/auth/lib/auth-session";
+import {
+  initAuthSession,
+  applyAuthSession,
+  applyPendingSession,
+  type AuthResponse,
+} from "@/features/auth/lib/auth-session";
 import { brand } from "@/config/brand";
 import { TRIAL_AUTHORIZATION_PAISE, TRIAL_AUTHORIZATION_RUPEES } from "@/features/checkout/lib/order-math";
 import { clearSignupDraft } from "@/features/checkout/lib/billing-session";
@@ -22,13 +27,15 @@ import { Select } from "@/shared/components/ui/Select";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { type DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
 import type { BillingCycle, PurchaseMode } from "@/features/checkout/lib/checkout-params";
-import { SocialLoginButtons } from "./SocialLoginButtons";
+import { OAuthButtons } from "./OAuthButtons";
 import {
   clearOAuthIdentityDraft,
   readOAuthIdentityDraft,
+  saveOAuthIdentityDraft,
   type OAuthIdentityDraft,
 } from "@/features/auth/lib/oauth";
 import { completeOAuthSignup } from "@/features/auth/lib/complete-oauth-signup";
+import { getPostAuthDestination } from "@/features/auth/lib/post-auth-routing";
 
 const INDUSTRIES = [
   "Technology",
@@ -178,7 +185,7 @@ export function SignUpMultiStep({
 
               const loginData = await apiClient<AuthResponse>("/auth/login", {
                 method: "POST",
-                body: JSON.stringify({ email: values.email, password: values.password }),
+                body: JSON.stringify({ email: values.email, password: values.password, appType: "website" }),
               });
 
               await initAuthSession(dispatch, loginData, values.email, true);
@@ -282,6 +289,92 @@ export function SignUpMultiStep({
     );
   }
 
+  const handleOAuthSuccess = async (data: AuthResponse, provider: "google" | "microsoft") => {
+    try {
+      setIsProcessing(true);
+
+      if (data.code === "PAYMENT_PENDING") {
+        const email = data.user?.email || data.email || "";
+        const fullName = data.user?.name || data.name || email.split("@")[0] || "User";
+        applyPendingSession(dispatch, {
+          fullName,
+          email,
+          company: data.user?.company || email,
+          industry: "",
+          password: "",
+          resume: true,
+          authProvider: provider,
+          providerUserId: data.providerUserId,
+          emailVerified: true,
+          pendingTrialId: data.pendingTrialId,
+        });
+        toast.success("Account recognized. Choose a plan to activate your workspace.");
+        router.push(ROUTES.pricing);
+        return;
+      }
+
+      if (data.code === "OAUTH_SIGNUP_REQUIRED") {
+        const email = data.email || data.user?.email || "";
+        const name = data.name || data.user?.name || email.split("@")[0] || "User";
+        const oauth: OAuthIdentityDraft = {
+          authProvider: provider,
+          providerUserId: data.providerUserId || "",
+          email,
+          name,
+          emailVerified: true,
+        };
+        saveOAuthIdentityDraft(oauth);
+
+        const next = await completeOAuthSignup({
+          dispatch,
+          oauth,
+          plan,
+          returnTo,
+          purchaseMode,
+          cycle,
+        });
+        toast.success(
+          plan ? "Account ready. Continue to billing." : "Account ready. Choose a plan to continue.",
+        );
+        router.push(next);
+        return;
+      }
+
+      if (data.requires_org_selection) {
+        const email = data.user?.email || data.email || "";
+        await applyAuthSession(dispatch, data, email);
+        router.push(ROUTES.selectOrganization);
+        return;
+      }
+
+      if (data.accessToken) {
+        clearOAuthIdentityDraft();
+        const email = data.user?.email || data.email || "";
+        const sessionDetails = await initAuthSession(dispatch, data, email, false);
+        if (sessionDetails.requiresOrgSelection) {
+          router.push(ROUTES.selectOrganization);
+          return;
+        }
+        toast.success("Signed in successfully.");
+        router.push(
+          getPostAuthDestination({
+            isNewSignup: false,
+            subscriptionStatus: sessionDetails.subscriptionStatus,
+            activePlan: sessionDetails.activePlan,
+            returnTo,
+          }),
+        );
+        return;
+      }
+
+      toast.error(data.message || "Social sign-in failed.");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Social sign-in failed."));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6 sm:p-8">
       <BragiLogo />
@@ -294,10 +387,10 @@ export function SignUpMultiStep({
       </p>
 
       <div className="mt-6">
-        <SocialLoginButtons returnTo={returnTo} mode="signup" />
+        <OAuthButtons onOAuthSuccess={handleOAuthSuccess} disabled={isProcessing} />
         <div className="mt-5 flex items-center gap-3">
           <div className="h-px flex-1 bg-white/10" />
-          <span className="text-xs font-semibold uppercase tracking-widest text-white/35">or</span>
+          <span className="text-xs font-semibold uppercase tracking-widest text-white/35">or continue with email</span>
           <div className="h-px flex-1 bg-white/10" />
         </div>
       </div>
