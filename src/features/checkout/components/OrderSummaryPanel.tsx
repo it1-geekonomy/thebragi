@@ -10,6 +10,8 @@ import { formatCurrency } from "@/shared/lib/format-currency";
 import { Button } from "@/shared/components/ui/Button";
 import { cn } from "@/shared/lib/cn";
 
+import type { SubscriptionQuote } from "@/features/subscription/api";
+
 export function OrderSummaryPanel({
   plan,
   users,
@@ -26,6 +28,8 @@ export function OrderSummaryPanel({
   minimumSeats,
   maximumSeats,
   purchaseMode,
+  quote,
+  loadingQuote,
 }: {
   plan: DynamicPlan;
   users: number;
@@ -42,14 +46,26 @@ export function OrderSummaryPanel({
   minimumSeats: number;
   maximumSeats?: number;
   purchaseMode: PurchaseMode;
+  quote?: SubscriptionQuote | null;
+  loadingQuote?: boolean;
 }) {
-  const includedUsers = plan.includedUsers || plan.maxUsers;
+  const includedUsers = quote ? quote.includedSeats : (plan.includedUsers || plan.maxUsers);
   const isTrial = purchaseMode === "trial";
   const atMax = Boolean(maximumSeats && users >= maximumSeats);
 
+  const displayBasePrice = quote ? quote.basePrice : basePrice;
+  const displayExtraSeats = quote ? quote.extraSeats : overageSeats;
+  const displayExtraCharge = quote ? quote.extraSeatCharge : (overageSeats * perUserPrice);
+  const displaySetupFee = quote ? quote.setupCost : setupFee;
+  const displayTaxable = quote ? quote.taxable : subtotal;
+  const displayTotal = quote ? quote.totalAmount : total;
+
   return (
     <aside className={cn("rounded-lg border border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:sticky lg:top-24", className)}>
-      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">Order summary</p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">Order summary</p>
+        {loadingQuote && <span className="text-xs text-white/40 animate-pulse">Calculating...</span>}
+      </div>
 
       <div className="mt-5 flex items-center justify-between gap-3 border-b border-white/8 pb-4">
         <div>
@@ -59,7 +75,7 @@ export function OrderSummaryPanel({
           </p>
         </div>
         <p className="font-semibold text-white">
-          {formatCurrency(basePrice)} /{cycle === "annual" ? "yr" : "mo"}
+          {formatCurrency(displayBasePrice)} /{cycle === "annual" ? "yr" : "mo"}
         </p>
       </div>
 
@@ -129,24 +145,52 @@ export function OrderSummaryPanel({
             <div className="flex justify-between gap-3 text-white/60">
               <dt>Additional users</dt>
               <dd>
-                {overageSeats > 0
-                  ? `${overageSeats} x ${formatCurrency(perUserPrice)}`
+                {displayExtraSeats > 0
+                  ? `${displayExtraSeats} x ${formatCurrency(displayExtraCharge / displayExtraSeats)}`
                   : "0"}
               </dd>
             </div>
-            {setupFee > 0 ? (
+            {displaySetupFee > 0 ? (
               <div className="flex justify-between gap-3 text-white/60">
                 <dt>One-time setup fee</dt>
-                <dd>{formatCurrency(setupFee)}</dd>
+                <dd>{formatCurrency(displaySetupFee)}</dd>
               </div>
             ) : null}
             <div className="flex justify-between gap-3">
-              <dt className="text-white/48">Subtotal</dt>
-              <dd className="text-white/84">{formatCurrency(subtotal)}</dd>
+              <dt className="text-white/48">Subtotal (Taxable)</dt>
+              <dd className="text-white/84">{formatCurrency(displayTaxable)}</dd>
             </div>
+
+            {quote && quote.taxAmount > 0 ? (
+              <>
+                {quote.cgst > 0 && quote.sgst > 0 ? (
+                  <>
+                    <div className="flex justify-between gap-3 text-white/60">
+                      <dt>CGST (9%)</dt>
+                      <dd>{formatCurrency(quote.cgst)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3 text-white/60">
+                      <dt>SGST (9%)</dt>
+                      <dd>{formatCurrency(quote.sgst)}</dd>
+                    </div>
+                  </>
+                ) : quote.igst > 0 ? (
+                  <div className="flex justify-between gap-3 text-white/60">
+                    <dt>IGST (18%)</dt>
+                    <dd>{formatCurrency(quote.igst)}</dd>
+                  </div>
+                ) : (
+                  <div className="flex justify-between gap-3 text-white/60">
+                    <dt>GST (18%)</dt>
+                    <dd>{formatCurrency(quote.taxAmount)}</dd>
+                  </div>
+                )}
+              </>
+            ) : null}
+
             <div className="flex justify-between gap-3 border-t border-white/8 pt-3 text-base">
               <dt className="font-semibold text-white">Total</dt>
-              <dd className="font-semibold text-white">{formatCurrency(total)}</dd>
+              <dd className="font-semibold text-white">{formatCurrency(displayTotal)}</dd>
             </div>
           </>
         )}
@@ -155,7 +199,7 @@ export function OrderSummaryPanel({
       <p className="mt-4 text-xs leading-5 text-white/38">
         {isTrial
           ? `The selected plan stays attached to the trial, but Razorpay authorizes only ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} today.`
-          : `Taxes will be calculated and added during payment if applicable.`}{" "}
+          : `All taxes and extra user charges included in total.`}{" "}
         Renews {renewalDateLabel(cycle)}.
       </p>
 

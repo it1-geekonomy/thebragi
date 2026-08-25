@@ -1,4 +1,5 @@
 import { fetchGstinValidation } from "@/features/checkout/api/gst-validation";
+
 export type GstinLookup = {
   gstin: string;
   valid: boolean;
@@ -18,10 +19,16 @@ export function isValidGstinFormat(gstin: string) {
   return GSTIN_RE.test(gstin.toUpperCase());
 }
 
+/** Extract 10-character PAN from standard GSTIN */
+export function panFromGstin(gstin: string): string {
+  const match = gstin.trim().toUpperCase().match(/^[0-9]{2}([A-Z]{5}[0-9]{4}[A-Z])/);
+  return match ? match[1] : "";
+}
+
 export function stateCodeFromName(stateName: string, statesList: { code: string; name: string }[] = []) {
-  if (!stateName.trim()) return "";
+  if (!stateName?.trim() || !statesList.length) return "";
   const lower = stateName.trim().toLowerCase();
-  return statesList.find((s) => s.name.toLowerCase() === lower)?.code ?? "";
+  return statesList.find((s) => s.name.toLowerCase() === lower || s.code.toLowerCase() === lower)?.code ?? "";
 }
 
 /** First 6-digit sequence in free text (Indian pincode). */
@@ -34,6 +41,7 @@ export type ResolvedLocation = {
   stateName: string;
   stateCode: string;
   country: string;
+  countryName?: string;
   city?: string;
 };
 
@@ -42,7 +50,7 @@ type CacheEntry<T> = {
   expiresAt: number;
 };
 
-const GSTIN_CACHE_TTL_MS = 5 * 60 * 1000; // Cache per-session lookups; pay flow force-revalidates.
+const GSTIN_CACHE_TTL_MS = 5 * 60 * 1000;
 const LOCATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 const isBrowser = typeof window !== "undefined";
@@ -59,13 +67,11 @@ function getValidCached<T>(cache: Map<string, CacheEntry<T>>, key: string): T | 
   return entry.value;
 }
 
-/** Resolve place-of-supply fields from the billing address the user typed. */
-export async function resolveLocationFromAddress(
-  address: string,
+export async function resolveLocationFromPostalCode(
+  postalCode: string,
   opts?: { force?: boolean },
 ): Promise<ResolvedLocation> {
-  const postalCode = pincodeFromText(address);
-  if (!postalCode) {
+  if (!postalCode || !/^\d{6}$/.test(postalCode)) {
     return { postalCode: "", stateName: "", stateCode: "", country: "" };
   }
 
@@ -77,13 +83,19 @@ export async function resolveLocationFromAddress(
   try {
     const res = await fetch(`/api/postal-lookup?code=${encodeURIComponent(postalCode)}`);
     if (!res.ok) return { postalCode, stateName: "", stateCode: "", country: "" };
-    const data = (await res.json()) as { stateName?: string; countryName?: string; city?: string };
-    const stateName = data.stateName?.trim() ?? "";
-    const result = {
+    const data = (await res.json()) as {
+      stateName?: string;
+      stateCode?: string;
+      countryCode?: string;
+      countryName?: string;
+      city?: string;
+    };
+    const result: ResolvedLocation = {
       postalCode,
-      stateName,
-      stateCode: stateCodeFromName(stateName),
-      country: data.countryName?.trim() ?? "",
+      stateName: data.stateName?.trim() ?? "",
+      stateCode: data.stateCode?.trim() ?? "",
+      country: data.countryCode?.trim() ?? "IN",
+      countryName: data.countryName?.trim() ?? "",
       city: data.city?.trim() ?? "",
     };
     if (isBrowser) {
@@ -93,6 +105,18 @@ export async function resolveLocationFromAddress(
   } catch {
     return { postalCode, stateName: "", stateCode: "", country: "" };
   }
+}
+
+/** Resolve place-of-supply fields from the billing address the user typed. */
+export async function resolveLocationFromAddress(
+  address: string,
+  opts?: { force?: boolean },
+): Promise<ResolvedLocation> {
+  const postalCode = pincodeFromText(address);
+  if (postalCode) {
+    return resolveLocationFromPostalCode(postalCode, opts);
+  }
+  return { postalCode: "", stateName: "", stateCode: "", country: "" };
 }
 
 /** Live GSTN lookup — legal name + PAN from API only. */
@@ -119,4 +143,3 @@ export function renewalDateLabel(cycle: "monthly" | "annual") {
   else date.setMonth(date.getMonth() + 1);
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
-
