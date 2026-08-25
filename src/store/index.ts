@@ -6,6 +6,7 @@ type SessionState = {
   isAuthenticated: boolean;
   userName: string | null;
   userEmail: string | null;
+  companyName: string | null;
   scope: "anonymous" | "checkout" | "full";
   activePlan: string | null;
   organizationId: string | null;
@@ -20,6 +21,7 @@ const initialSessionState: SessionState = {
   isAuthenticated: false,
   userName: null,
   userEmail: null,
+  companyName: null,
   scope: "anonymous",
   activePlan: null,
   organizationId: null,

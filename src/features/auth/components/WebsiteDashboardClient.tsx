@@ -25,6 +25,7 @@ export function WebsiteDashboardClient() {
     activePlan,
     userName,
     userEmail,
+    companyName,
     organizationId,
     subscriptionStatus,
     trialEndsAt,
@@ -78,16 +79,43 @@ export function WebsiteDashboardClient() {
     (p) => p.slug === activePlan?.toLowerCase() || p.name.toLowerCase() === activePlan?.toLowerCase(),
   );
   const planName = currentPlan?.name || activePlan;
-  const firstName = userName ? userName.split(" ")[0] : "User";
+  const firstName = userName ? userName.split(" ")[0] : "";
   const daysRemaining = trialEndsAt
     ? Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86_400_000))
     : null;
 
-  const currentOrg = workspaces.find((w) => w.id === organizationId) || {
-    id: organizationId || "",
-    name: "Primary Organization",
-    role: role || "Admin",
-  };
+  const currentOrg = workspaces.find((w) => w.id === organizationId);
+  const orgName = currentOrg?.name || currentOrg?.companyName || companyName || null;
+  const userRole = currentOrg?.role || role || null;
+
+  const metadataRows = [
+    orgName && {
+      label: "Current Organization",
+      value: (
+        <div className="flex items-center gap-1.5 font-medium text-white">
+          <Building2 className="h-4 w-4 text-[#7dc890]" />
+          <span>{orgName}</span>
+        </div>
+      ),
+    },
+    userRole && {
+      label: "Your Role",
+      value: (
+        <div className="flex items-center gap-1.5 font-medium text-[#a8dfb3]">
+          <Shield className="h-3.5 w-3.5 text-[#7dc890]" />
+          <span className="capitalize">{userRole.replace(/_/g, " ")}</span>
+        </div>
+      ),
+    },
+    userEmail && {
+      label: "Account",
+      value: <span className="font-medium text-white">{userEmail}</span>,
+    },
+    planName && {
+      label: isTrial ? "Trial plan" : "Current plan",
+      value: <span className="font-medium text-[#a8dfb3]">{planName}</span>,
+    },
+  ].filter(Boolean) as { label: string; value: React.ReactNode }[];
 
   const handleSwitchWorkspace = async (targetOrgId: string, targetName?: string) => {
     if (targetOrgId === organizationId || isSwitching) return;
@@ -128,13 +156,17 @@ export function WebsiteDashboardClient() {
       <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[#7dc890]">
         {isTrial ? "Trial workspace" : "Your workspace"}
       </p>
-      <h1 className="mt-5 text-3xl font-semibold text-white sm:text-4xl">Welcome back, {firstName}</h1>
+      <h1 className="mt-5 text-3xl font-semibold text-white sm:text-4xl">
+        {firstName ? `Welcome back, ${firstName}` : "Welcome back"}
+      </h1>
       <p className="mt-3 text-sm leading-6 text-white/58">
         {isTrial
           ? daysRemaining != null
-            ? `Your ${planName} trial is active — ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} remaining.`
-            : `Your ${planName} trial is active.`
-          : `You're on ${planName}. Open the app to continue working.`}
+            ? `Your ${planName || "workspace"} trial is active — ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} remaining.`
+            : `Your ${planName || "workspace"} trial is active.`
+          : planName
+            ? `You're on ${planName}. Open the app to continue working.`
+            : "Open the app to continue working."}
       </p>
 
       {/* Workspace Card with switcher */}
@@ -175,7 +207,9 @@ export function WebsiteDashboardClient() {
                         >
                           <div className="truncate pr-2">
                             <p className="font-semibold truncate">{org.name || org.companyName || "Organization"}</p>
-                            <p className="text-[10px] text-white/40 capitalize">{org.role?.toLowerCase() || "member"}</p>
+                            {org.role ? (
+                              <p className="text-[10px] text-white/40 capitalize">{org.role.toLowerCase().replace(/_/g, " ")}</p>
+                            ) : null}
                           </div>
                           {isCurrent && <Check className="h-3.5 w-3.5 shrink-0 text-[#7dc890]" />}
                         </button>
@@ -188,30 +222,16 @@ export function WebsiteDashboardClient() {
           )}
         </div>
 
-        <div className="mt-4 grid gap-3 text-sm">
-          <div className="flex justify-between border-b border-white/10 pb-3">
-            <span className="text-white/58">Current Organization</span>
-            <div className="flex items-center gap-1.5 font-medium text-white">
-              <Building2 className="h-4 w-4 text-[#7dc890]" />
-              <span>{currentOrg.name || currentOrg.companyName}</span>
-            </div>
+        {metadataRows.length > 0 ? (
+          <div className="mt-4 divide-y divide-white/10 text-sm">
+            {metadataRows.map((row) => (
+              <div key={row.label} className="flex justify-between py-3 first:pt-0 last:pb-0">
+                <span className="text-white/58">{row.label}</span>
+                {row.value}
+              </div>
+            ))}
           </div>
-          <div className="flex justify-between border-b border-white/10 pb-3">
-            <span className="text-white/58">Your Role</span>
-            <div className="flex items-center gap-1.5 font-medium text-[#a8dfb3]">
-              <Shield className="h-3.5 w-3.5 text-[#7dc890]" />
-              <span className="capitalize">{(currentOrg.role || "Admin").replace(/_/g, " ")}</span>
-            </div>
-          </div>
-          <div className="flex justify-between border-b border-white/10 pb-3">
-            <span className="text-white/58">Account</span>
-            <span className="font-medium text-white">{userEmail}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-white/58">{isTrial ? "Trial plan" : "Current plan"}</span>
-            <span className="font-medium text-[#a8dfb3]">{planName}</span>
-          </div>
-        </div>
+        ) : null}
       </div>
 
       <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
