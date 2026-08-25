@@ -26,6 +26,11 @@ export type AuthResponse = {
   code?: string;
   message?: string;
   pendingTrialId?: string;
+  organizationId?: string;
+  subscriptionStatus?: string;
+  activePlan?: string;
+  plan?: string;
+  planSlug?: string;
   user?: SessionUser;
   requires_org_selection?: boolean;
   session_key?: string;
@@ -107,13 +112,17 @@ export async function applyAuthSession(
     localStorage.setItem("accessToken", rawToken);
   }
 
+  const orgId = data.organizationId ?? data.user?.organizationId ?? null;
+  const initialPlan = data.activePlan ?? data.plan ?? data.planSlug ?? null;
+
   dispatch(
     setMockSession({
       isAuthenticated: true,
       userEmail: email || data.user?.email || null,
       userName: data.user?.name ?? email.split("@")[0],
       scope: "full",
-      organizationId: data.user?.organizationId ?? null,
+      organizationId: orgId,
+      activePlan: initialPlan,
       role: data.user?.role ?? null,
     }),
   );
@@ -141,12 +150,36 @@ export async function initAuthSession(
   const token = localStorage.getItem("accessToken") ?? "";
   const sessionDetails = await fetchAuthSessionDetails(token);
 
+  const resolvedStatus: SubscriptionStatus =
+    sessionDetails.subscriptionStatus !== "none"
+      ? sessionDetails.subscriptionStatus
+      : data.subscriptionStatus
+        ? (data.subscriptionStatus.toLowerCase() === "active" || data.subscriptionStatus.toLowerCase() === "completed"
+            ? "active"
+            : data.subscriptionStatus.toLowerCase() === "trialing"
+              ? "trialing"
+              : "none")
+        : "none";
+
+  const resolvedPlan =
+    sessionDetails.activePlan ||
+    data.activePlan ||
+    data.plan ||
+    data.planSlug ||
+    null;
+
+  const resolvedOrgId =
+    sessionDetails.organizationId ||
+    data.organizationId ||
+    data.user?.organizationId ||
+    null;
+
   dispatch(
     setMockSession({
       isNewSignup,
-      subscriptionStatus: sessionDetails.subscriptionStatus,
-      activePlan: sessionDetails.activePlan,
-      organizationId: sessionDetails.organizationId,
+      subscriptionStatus: resolvedStatus,
+      activePlan: resolvedPlan,
+      organizationId: resolvedOrgId,
       userName: sessionDetails.userName || data.user?.name || email.split("@")[0],
       userEmail: sessionDetails.userEmail || email,
       role: sessionDetails.role || data.user?.role || null,
@@ -156,9 +189,9 @@ export async function initAuthSession(
   );
 
   return {
-    subscriptionStatus: sessionDetails.subscriptionStatus,
-    activePlan: sessionDetails.activePlan ?? undefined,
-    organizationId: sessionDetails.organizationId,
+    subscriptionStatus: resolvedStatus,
+    activePlan: resolvedPlan ?? undefined,
+    organizationId: resolvedOrgId,
     requiresOrgSelection: false,
   };
 }

@@ -45,9 +45,15 @@ export function ForgotPasswordForm() {
           className="grid gap-5"
           onSubmit={handleSubmit(async (values) => {
             try {
+              const resetUrl = typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined;
               await apiClient("/auth/forgot-password", {
                 method: "POST",
-                body: JSON.stringify({ email: values.email, appType: "website" }),
+                body: JSON.stringify({
+                  email: values.email,
+                  appType: "website",
+                  resetUrl,
+                  redirectUrl: resetUrl,
+                }),
               });
               toast.success("If an account exists, a reset link has been sent to your email.");
             } catch (err: unknown) {
