@@ -21,6 +21,7 @@ export interface DynamicPlan {
   setupFee: number;
   popular?: boolean;
   badge?: string;
+  isEnterprise?: boolean;
 }
 
 function getPricingModel(apiPlan: ApiPlan, monthlyPerUserCost: number, annualPerUserCost: number): PricingModel {
@@ -76,7 +77,25 @@ export function useSubscriptionPlans() {
               setupFee: Number(apiPlan.setupCost || 0),
             };
           });
-          setPlans(mappedPlans);
+          const enterprisePlan: DynamicPlan = {
+            id: "enterprise-plan-static",
+            slug: "enterprise",
+            name: "Enterprise",
+            description: "Custom built for large scale organizations",
+            priceMonthly: 0,
+            priceAnnual: 0,
+            perUserCostMonthly: 0,
+            perUserCostAnnual: 0,
+            annualDiscountPercentage: 0,
+            includedUsers: 0,
+            minimumSeats: 25,
+            maxUsers: 0,
+            maximumSeats: 0,
+            pricingModel: "per_seat",
+            setupFee: 0,
+            isEnterprise: true,
+          };
+          setPlans([...mappedPlans, enterprisePlan]);
         }
       })
       .catch((err: { message?: string }) => {

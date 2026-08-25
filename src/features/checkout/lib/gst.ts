@@ -1,9 +1,4 @@
 import { fetchGstinValidation } from "@/features/checkout/api/gst-validation";
-import { INDIAN_STATES } from "@/features/checkout/lib/gst-states";
-
-export { SAC_CODE, stateNameFromCode } from "@/features/checkout/lib/gst-states";
-export type { TaxBreakdown } from "./order-math";
-
 export type GstinLookup = {
   gstin: string;
   valid: boolean;
@@ -23,10 +18,10 @@ export function isValidGstinFormat(gstin: string) {
   return GSTIN_RE.test(gstin.toUpperCase());
 }
 
-export function stateCodeFromName(stateName: string) {
+export function stateCodeFromName(stateName: string, statesList: { code: string; name: string }[] = []) {
   if (!stateName.trim()) return "";
   const lower = stateName.trim().toLowerCase();
-  return INDIAN_STATES.find((s) => s.name.toLowerCase() === lower)?.code ?? "";
+  return statesList.find((s) => s.name.toLowerCase() === lower)?.code ?? "";
 }
 
 /** First 6-digit sequence in free text (Indian pincode). */

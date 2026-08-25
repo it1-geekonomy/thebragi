@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ROUTES } from "@/config/routes";
 import type { BillingCycle, PurchaseMode } from "@/features/checkout/lib/checkout-params";
 import type { DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
-import { SAC_CODE, renewalDateLabel, type TaxBreakdown } from "@/features/checkout/lib/gst";
+import { renewalDateLabel } from "@/features/checkout/lib/gst";
 import { TRIAL_AUTHORIZATION_RUPEES } from "@/features/checkout/lib/order-math";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { Button } from "@/shared/components/ui/Button";
@@ -15,7 +15,6 @@ export function OrderSummaryPanel({
   users,
   cycle,
   subtotal,
-  tax,
   total,
   onSeatsChange,
   onCycleChange,
@@ -32,7 +31,6 @@ export function OrderSummaryPanel({
   users: number;
   cycle: BillingCycle;
   subtotal: number;
-  tax: TaxBreakdown;
   total: number;
   onSeatsChange: (users: number) => void;
   onCycleChange: (cycle: BillingCycle) => void;
@@ -146,23 +144,6 @@ export function OrderSummaryPanel({
               <dt className="text-white/48">Subtotal</dt>
               <dd className="text-white/84">{formatCurrency(subtotal)}</dd>
             </div>
-            {tax.kind === "intra" ? (
-              <>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-white/48">CGST @ 9%</dt>
-                  <dd className="text-white/84">{formatCurrency(tax.cgst)}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-white/48">SGST @ 9%</dt>
-                  <dd className="text-white/84">{formatCurrency(tax.sgst)}</dd>
-                </div>
-              </>
-            ) : (
-              <div className="flex justify-between gap-3">
-                <dt className="text-white/48">IGST @ 18%</dt>
-                <dd className="text-white/84">{formatCurrency(tax.igst)}</dd>
-              </div>
-            )}
             <div className="flex justify-between gap-3 border-t border-white/8 pt-3 text-base">
               <dt className="font-semibold text-white">Total</dt>
               <dd className="font-semibold text-white">{formatCurrency(total)}</dd>
@@ -174,10 +155,8 @@ export function OrderSummaryPanel({
       <p className="mt-4 text-xs leading-5 text-white/38">
         {isTrial
           ? `The selected plan stays attached to the trial, but Razorpay authorizes only ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} today.`
-          : tax.kind === "intra"
-            ? "Intra-state supply - CGST + SGST applied."
-            : "Inter-state supply - IGST applied."}{" "}
-        SAC {SAC_CODE} - Renews {renewalDateLabel(cycle)}.
+          : `Taxes will be calculated and added during payment if applicable.`}{" "}
+        Renews {renewalDateLabel(cycle)}.
       </p>
 
       <Link className="mt-5 inline-flex text-sm font-semibold text-[#a8dfb3] hover:text-white" href={ROUTES.pricing}>

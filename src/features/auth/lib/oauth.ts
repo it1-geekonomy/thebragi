@@ -1,4 +1,9 @@
-"use client";
+import { apiClient } from "@/shared/lib/api-client";
+import { type AuthResponse } from "@/features/auth/lib/auth-session";
+
+export const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+export const MICROSOFT_CLIENT_ID = process.env.NEXT_PUBLIC_MICROSOFT_CLIENT_ID || "";
+export const MICROSOFT_TENANT_ID = process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID || "common";
 
 export type OAuthProvider = "google" | "microsoft";
 
@@ -6,166 +11,230 @@ export type OAuthIdentityDraft = {
   authProvider: OAuthProvider;
   providerUserId: string;
   email: string;
-  name: string;
-  emailVerified: boolean;
+  name?: string;
+  emailVerified?: boolean;
   idToken?: string;
 };
 
-type OAuthStatePayload = {
-  provider: OAuthProvider;
-  mode: "signin" | "signup";
-  returnTo: string;
-  nonce: string;
-};
-
-const OAUTH_STATE_KEY = "bragi_oauth_state";
-const OAUTH_DRAFT_KEY = "bragi_oauth_identity";
-
-function randomNonce() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-/** base64url — avoids `+` being turned into a space by URLSearchParams */
-function encodeOAuthState(payload: OAuthStatePayload): string {
-  const json = JSON.stringify(payload);
-  return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function decodeOAuthState(state: string): OAuthStatePayload {
-  const b64 = state.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
-  return JSON.parse(atob(padded)) as OAuthStatePayload;
-}
+const OAUTH_DRAFT_KEY = "bragi_oauth_identity_draft";
+const OAUTH_REDIRECT_KEY = "bragi_oauth_redirect_pending";
 
 export function saveOAuthIdentityDraft(draft: OAuthIdentityDraft) {
-  sessionStorage.setItem(OAUTH_DRAFT_KEY, JSON.stringify(draft));
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem(OAUTH_DRAFT_KEY, JSON.stringify(draft));
+  }
 }
 
 export function readOAuthIdentityDraft(): OAuthIdentityDraft | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = sessionStorage.getItem(OAUTH_DRAFT_KEY);
-    if (!raw) return null;
-    const draft = JSON.parse(raw) as OAuthIdentityDraft;
-    if (!draft.authProvider || !draft.providerUserId || !draft.email) return null;
-    return draft;
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
 export function clearOAuthIdentityDraft() {
-  sessionStorage.removeItem(OAUTH_DRAFT_KEY);
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem(OAUTH_DRAFT_KEY);
+  }
+}
+
+export async function oauthLogin(
+  authProvider: "google" | "microsoft",
+  idToken: string,
+): Promise<AuthResponse> {
+  return apiClient<AuthResponse>("/auth/oauth", {
+    method: "POST",
+    body: JSON.stringify({ authProvider, idToken }),
+  });
+}
+
+function loadGoogleScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined") return resolve();
+    if ((window as unknown as { google?: { accounts?: { id?: unknown } } }).google?.accounts?.id) {
+      return resolve();
+    }
+    const existing = document.getElementById("google-gsi-script");
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = "google-gsi-script";
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Failed to load Google Sign-In script"));
+    document.head.appendChild(script);
+  });
+}
+
+export function triggerGoogleSignIn(): Promise<string> {
+  return new Promise(async (resolve, reject) => {
+    if (!GOOGLE_CLIENT_ID) {
+      return reject(new Error("Google Client ID is not configured."));
+    }
+
+    try {
+      await loadGoogleScript();
+    } catch (err) {
+      return reject(err);
+    }
+
+    const google = (window as unknown as { google?: any }).google;
+    if (!google?.accounts?.id) {
+      return reject(new Error("Google Identity Services not available."));
+    }
+
+    let isResolved = false;
+
+    try {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (response: { credential?: string }) => {
+          if (response?.credential && !isResolved) {
+            isResolved = true;
+            resolve(response.credential);
+          }
+        },
+        auto_select: false,
+        cancel_on_tap_outside: true,
+      });
+
+      // Render a hidden Google Button to programmatically trigger standard popup UX
+      const hiddenContainer = document.createElement("div");
+      hiddenContainer.style.position = "absolute";
+      hiddenContainer.style.top = "-9999px";
+      hiddenContainer.style.left = "-9999px";
+      hiddenContainer.style.opacity = "0";
+      document.body.appendChild(hiddenContainer);
+
+      google.accounts.id.renderButton(hiddenContainer, {
+        type: "standard",
+        theme: "outline",
+        size: "large",
+        click_listener: () => { },
+      });
+
+      // Find the inner button and click it to open Google's consent popup
+      const btn = hiddenContainer.querySelector("div[role=button]") as HTMLElement;
+      if (btn) {
+        btn.click();
+      } else {
+        google.accounts.id.prompt((notification: any) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            if (!isResolved) {
+              if (document.body.contains(hiddenContainer)) {
+                document.body.removeChild(hiddenContainer);
+              }
+              reject(new Error("Google Sign-In prompt was dismissed or unavailable."));
+            }
+          }
+        });
+      }
+
+      setTimeout(() => {
+        if (document.body.contains(hiddenContainer)) {
+          document.body.removeChild(hiddenContainer);
+        }
+      }, 5000);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+export function triggerMicrosoftSignIn(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!MICROSOFT_CLIENT_ID) {
+      return reject(new Error("Microsoft Client ID is not configured."));
+    }
+
+    const tenant = MICROSOFT_TENANT_ID || "common";
+    const redirectUri = `${window.location.origin}/auth/callback/microsoft`;
+    const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const state = Math.random().toString(36).substring(2, 15);
+
+    const authUrl = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?client_id=${encodeURIComponent(
+      MICROSOFT_CLIENT_ID,
+    )}&response_type=id_token&redirect_uri=${encodeURIComponent(
+      redirectUri,
+    )}&scope=openid%20profile%20email&response_mode=fragment&state=${state}&nonce=${nonce}`;
+
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    const popup = window.open(
+      authUrl,
+      "microsoft_oauth_popup",
+      `width=${width},height=${height},left=${left},top=${top},status=no,toolbar=no,menubar=no,location=no`,
+    );
+
+    if (!popup) {
+      return reject(new Error("Popup blocked. Please allow popups for this site."));
+    }
+
+    let isDone = false;
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "MS_OAUTH_TOKEN" && event.data?.idToken) {
+        isDone = true;
+        window.removeEventListener("message", handleMessage);
+        resolve(event.data.idToken);
+      } else if (event.data?.type === "MS_OAUTH_ERROR") {
+        isDone = true;
+        window.removeEventListener("message", handleMessage);
+        reject(new Error(event.data.error || "Microsoft login failed."));
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    const checkClosedInterval = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosedInterval);
+        window.removeEventListener("message", handleMessage);
+        if (!isDone) {
+          reject(new Error("Microsoft login cancelled."));
+        }
+      }
+    }, 800);
+  });
 }
 
 export function beginOAuthRedirect(
   provider: OAuthProvider,
-  opts: { mode: "signin" | "signup"; returnTo: string },
+  opts: { mode: "signin" | "signup"; returnTo?: string },
 ) {
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim();
-  const microsoftClientId = process.env.NEXT_PUBLIC_MICROSOFT_CLIENT_ID?.trim();
-  const redirectUri = `${window.location.origin}/sign-in`;
-  const nonce = randomNonce();
-  const statePayload: OAuthStatePayload = {
-    provider,
-    mode: opts.mode,
-    returnTo: opts.returnTo,
-    nonce,
-  };
-  const state = encodeOAuthState(statePayload);
-  sessionStorage.setItem(OAUTH_STATE_KEY, state);
-
-  if (provider === "google") {
-    if (!googleClientId) {
-      throw new Error("NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set.");
-    }
-    const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    url.searchParams.set("client_id", googleClientId);
-    url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("response_type", "id_token");
-    url.searchParams.set("scope", "openid email profile");
-    url.searchParams.set("nonce", nonce);
-    url.searchParams.set("state", state);
-    url.searchParams.set("prompt", "select_account");
-    window.location.href = url.toString();
-    return;
-  }
-
-  if (!microsoftClientId) {
-    throw new Error("NEXT_PUBLIC_MICROSOFT_CLIENT_ID is not set.");
-  }
-  // Single-tenant Azure apps cannot use /common (AADSTS50194). Use Directory (tenant) ID.
-  const tenant = process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID?.trim();
-  if (!tenant || tenant === "common" || tenant === "organizations" || tenant === "consumers") {
-    throw new Error(
-      "Set NEXT_PUBLIC_MICROSOFT_TENANT_ID to your Azure Directory (tenant) ID. Single-tenant apps cannot use /common.",
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem(
+      OAUTH_REDIRECT_KEY,
+      JSON.stringify({ provider, mode: opts.mode, returnTo: opts.returnTo }),
     );
   }
-  const url = new URL(
-    `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`,
-  );
-  url.searchParams.set("client_id", microsoftClientId);
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("response_type", "id_token");
-  url.searchParams.set("response_mode", "fragment");
-  url.searchParams.set("scope", "openid profile email");
-  url.searchParams.set("nonce", nonce);
-  url.searchParams.set("state", state);
-  url.searchParams.set("prompt", "select_account");
-  window.location.href = url.toString();
+  if (provider === "google") {
+    triggerGoogleSignIn().then((idToken) => {
+      window.postMessage({ type: "OAUTH_REDIRECT_SUCCESS", provider, idToken }, window.location.origin);
+    });
+  } else {
+    triggerMicrosoftSignIn().then((idToken) => {
+      window.postMessage({ type: "OAUTH_REDIRECT_SUCCESS", provider, idToken }, window.location.origin);
+    });
+  }
 }
 
 export function consumeOAuthRedirectResult(): {
   provider: OAuthProvider;
-  mode: "signin" | "signup";
-  returnTo: string;
   idToken: string;
+  mode?: "signin" | "signup";
+  returnTo?: string;
 } | null {
-  if (typeof window === "undefined") return null;
-
-  const hash = window.location.hash?.replace(/^#/, "");
-  if (!hash) return null;
-
-  const params = new URLSearchParams(hash);
-  const idToken = params.get("id_token");
-  const state = params.get("state");
-  const error = params.get("error_description") || params.get("error");
-
-  // Clear sensitive tokens from the URL bar.
-  const cleanUrl = `${window.location.pathname}${window.location.search}`;
-  window.history.replaceState({}, "", cleanUrl);
-
-  if (error) {
-    throw new Error(error);
-  }
-  if (!idToken || !state) return null;
-
-  const saved = sessionStorage.getItem(OAUTH_STATE_KEY);
-  sessionStorage.removeItem(OAUTH_STATE_KEY);
-
-  // No in-progress OAuth in this tab (browser Back after login, leftover hash
-  // after logout, or a refreshed callback URL). Clear the fragment and ignore.
-  if (!saved) {
-    return null;
-  }
-  if (saved !== state) {
-    throw new Error("OAuth state mismatch. Please try again.");
-  }
-
-  let payload: OAuthStatePayload;
-  try {
-    payload = decodeOAuthState(state);
-  } catch {
-    throw new Error("Invalid OAuth state.");
-  }
-
-  return {
-    provider: payload.provider,
-    mode: payload.mode,
-    returnTo: payload.returnTo,
-    idToken,
-  };
+  return null;
 }
