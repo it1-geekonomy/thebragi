@@ -67,20 +67,20 @@ export function OrderSummaryPanel({
         {loadingQuote && <span className="text-xs text-white/40 animate-pulse">Calculating...</span>}
       </div>
 
-      <div className="mt-5 flex items-center justify-between gap-3 border-b border-white/8 pb-4">
-        <div>
+      <div className="mt-5 flex flex-col gap-2 border-b border-white/8 pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
           <p className="font-semibold text-white">{plan.name} Base Package</p>
           <p className="mt-1 text-xs text-white/42">
             {includedUsers ? `Includes up to ${includedUsers} users` : `Starts at ${minimumSeats} users`}
           </p>
         </div>
-        <p className="font-semibold text-white">
+        <p className="shrink-0 font-semibold text-white sm:text-right">
           {formatCurrency(displayBasePrice)} /{cycle === "annual" ? "yr" : "mo"}
         </p>
       </div>
 
       {isTrial ? null : (
-      <div className="mt-4 flex items-center justify-between gap-3">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-sm text-white/58">Users</span>
         <div className="inline-flex items-center gap-2">
           <Button
@@ -108,7 +108,7 @@ export function OrderSummaryPanel({
       </div>
       )}
 
-      <div className="mt-4 flex items-center justify-between gap-3">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-sm text-white/58">Billing cycle</span>
         <div className="inline-flex rounded-md border border-white/12 p-0.5">
           {(["monthly", "annual"] as const).map((option) => (

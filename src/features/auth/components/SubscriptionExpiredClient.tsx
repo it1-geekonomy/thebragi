@@ -36,9 +36,9 @@ export function SubscriptionExpiredClient() {
   }
 
   return (
-    <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-lg flex-col items-center justify-center px-5 py-16 text-center sm:px-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[#7dc890]">Subscription</p>
-      <h1 className="mt-5 text-3xl font-semibold text-white sm:text-4xl">Your subscription has expired</h1>
+    <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full min-w-0 max-w-lg flex-col items-center justify-center px-5 py-16 text-center sm:px-8">
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7dc890] sm:tracking-[0.34em]">Subscription</p>
+      <h1 className="mt-5 text-[clamp(1.75rem,6vw,2.25rem)] font-semibold text-white sm:text-4xl">Your subscription has expired</h1>
       <p className="mt-4 text-sm leading-7 text-white/58">
         Upgrade your plan to use Bragi. Your workspace data is retained for 30 days after expiry.
       </p>

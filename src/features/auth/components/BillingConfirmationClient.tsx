@@ -68,9 +68,9 @@ export function BillingConfirmationClient() {
       </p>
 
       <section className="mt-8 rounded-lg border border-white/10 bg-white/[0.04] p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold text-white">{plan?.name || activePlan}</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-white sm:text-xl">{plan?.name || activePlan}</h2>
             {plan ? <p className="mt-1 text-sm text-white/52">{plan.description}</p> : null}
           </div>
           <span className="shrink-0 rounded-full border border-[#7dc890]/30 bg-[#7dc890]/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#bce8c5]">
@@ -79,23 +79,23 @@ export function BillingConfirmationClient() {
         </div>
 
         <dl className="mt-6 grid gap-3 border-t border-white/8 pt-6 text-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
-            <dt className="text-white/48">Trial started</dt>
-            <dd className="font-medium text-white/84">{trialStart}</dd>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 border-b border-white/8 pb-3">
+            <dt className="shrink-0 text-white/48">Trial started</dt>
+            <dd className="min-w-0 font-medium text-white/84 sm:text-right">{trialStart}</dd>
           </div>
-          <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
-            <dt className="text-white/48">Trial ends</dt>
-            <dd className="font-medium text-white/84">{trialEnd}</dd>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 border-b border-white/8 pb-3">
+            <dt className="shrink-0 text-white/48">Trial ends</dt>
+            <dd className="min-w-0 font-medium text-white/84 sm:text-right">{trialEnd}</dd>
           </div>
-          <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
-            <dt className="text-white/48">After trial (Base)</dt>
-            <dd className="font-medium text-white/84">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 border-b border-white/8 pb-3">
+            <dt className="shrink-0 text-white/48">After trial (Base)</dt>
+            <dd className="min-w-0 font-medium text-white/84 sm:text-right">
               {plan ? `${formatCurrency(plan.priceMonthly)}/mo` : "—"}
             </dd>
           </div>
-          <div className="flex items-center justify-between gap-3">
-            <dt className="text-white/48">Additional Users</dt>
-            <dd className="font-medium text-white/84">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <dt className="shrink-0 text-white/48">Additional Users</dt>
+            <dd className="min-w-0 font-medium text-white/84 sm:text-right">
               {plan ? `+${formatCurrency(plan.perUserCostMonthly)}/mo per user` : "—"}
             </dd>
           </div>

@@ -152,11 +152,11 @@ export function WebsiteDashboardClient() {
   };
 
   return (
-    <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-xl flex-col items-center justify-center px-5 py-16 text-center sm:px-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[#7dc890]">
+    <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full min-w-0 max-w-xl flex-col items-center justify-center px-5 py-16 text-center sm:px-8">
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7dc890] sm:tracking-[0.34em]">
         {isTrial ? "Trial workspace" : "Your workspace"}
       </p>
-      <h1 className="mt-5 text-3xl font-semibold text-white sm:text-4xl">
+      <h1 className="mt-5 text-[clamp(1.75rem,6vw,2.25rem)] font-semibold text-white sm:text-4xl">
         {firstName ? `Welcome back, ${firstName}` : "Welcome back"}
       </h1>
       <p className="mt-3 text-sm leading-6 text-white/58">
@@ -171,7 +171,7 @@ export function WebsiteDashboardClient() {
 
       {/* Workspace Card with switcher */}
       <div className="mt-8 w-full rounded-xl border border-white/10 bg-white/[0.02] p-6 text-left shadow-lg">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">Your Workspace</h2>
           {workspaces.length > 1 && (
             <div className="relative">
@@ -225,16 +225,19 @@ export function WebsiteDashboardClient() {
         {metadataRows.length > 0 ? (
           <div className="mt-4 divide-y divide-white/10 text-sm">
             {metadataRows.map((row) => (
-              <div key={row.label} className="flex justify-between py-3 first:pt-0 last:pb-0">
-                <span className="text-white/58">{row.label}</span>
-                {row.value}
+              <div
+                key={row.label}
+                className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+              >
+                <span className="shrink-0 text-white/58">{row.label}</span>
+                <div className="min-w-0 sm:text-right">{row.value}</div>
               </div>
             ))}
           </div>
         ) : null}
       </div>
 
-      <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+      <div className="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
         <Button
           variant="secondary"
           className="w-full"

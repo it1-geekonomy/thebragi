@@ -241,7 +241,7 @@ export function ProfilePageClient() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">Account</p>
-          <h1 className="mt-3 text-3xl font-semibold text-white">Profile</h1>
+          <h1 className="mt-3 text-[clamp(1.75rem,5vw,1.875rem)] font-semibold text-white sm:text-3xl">Profile</h1>
           <p className="mt-2 text-sm text-white/52">
             {profile.subscribed
               ? "Your workspace account details."
@@ -285,10 +285,10 @@ export function ProfilePageClient() {
             {details.map(([label, value]) => (
               <div
                 key={label}
-                className="flex items-center justify-between rounded-md border border-white/10 bg-black/35 px-3 py-2 text-sm"
+                className="flex flex-col gap-1 rounded-md border border-white/10 bg-black/35 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
               >
-                <span className="text-white/44">{label}</span>
-                <span className="font-semibold text-white/78">{value}</span>
+                <span className="shrink-0 text-white/44">{label}</span>
+                <span className="min-w-0 font-semibold text-white/78 sm:text-right">{value}</span>
               </div>
             ))}
           </div>

@@ -54,14 +54,14 @@ export function PlanCard({
           : "border-transparent",
       )}
     >
-      <div className="flex min-h-8 items-center justify-between gap-3">
-        <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
+      <div className="flex min-h-8 flex-wrap items-start justify-between gap-2 sm:gap-3">
+        <h3 className="min-w-0 text-lg font-semibold text-white sm:text-xl">{plan.name}</h3>
         {isCurrentPlan ? (
-          <Badge className="bg-[#5f9965] text-white border-[#5f9965]">Current Plan</Badge>
+          <Badge className="shrink-0 bg-[#5f9965] text-white border-[#5f9965]">Current Plan</Badge>
         ) : (highlighted || selected) ? (
-          <Badge className="bg-[#7dc890] text-white border-[#7dc890]">Selected</Badge>
+          <Badge className="shrink-0 bg-[#7dc890] text-white border-[#7dc890]">Selected</Badge>
         ) : plan.popular ? (
-          <Badge>{plan.badge ?? "Most popular"}</Badge>
+          <Badge className="shrink-0">{plan.badge ?? "Most popular"}</Badge>
         ) : null}
       </div>
       <p className="mt-3 min-h-12 text-sm leading-6 text-white/58">
@@ -73,12 +73,10 @@ export function PlanCard({
       </p>
       <div className="mt-6 flex flex-col gap-2">
         {plan.isEnterprise ? (
-          <div className="flex items-end gap-2">
-            <span className="text-4xl font-semibold text-white">Custom</span>
-          </div>
+          <p className="text-3xl font-semibold text-white sm:text-4xl">Custom</p>
         ) : (
-          <div className="flex items-end gap-2">
-            <span className="text-4xl font-semibold text-white">{formatCurrency(displayPrice)}</span>
+          <div className="flex flex-wrap items-end gap-2">
+            <span className="text-3xl font-semibold text-white sm:text-4xl">{formatCurrency(displayPrice)}</span>
             <span className="pb-1 text-sm text-white/46">{isAnnual ? "/year" : "/month"}</span>
           </div>
         )}

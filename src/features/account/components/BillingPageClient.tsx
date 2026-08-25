@@ -122,7 +122,7 @@ export function BillingPageClient() {
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7dc890]">
             Account
           </p>
-          <h1 className="mt-3 text-3xl font-semibold text-white">Billing</h1>
+          <h1 className="mt-3 text-[clamp(1.75rem,5vw,1.875rem)] font-semibold text-white sm:text-3xl">Billing</h1>
           <p className="mt-2 text-sm text-white/52">
             {!organizationId
               ? "Complete checkout to activate billing for this account."
@@ -138,8 +138,8 @@ export function BillingPageClient() {
       </div>
       <div className="mt-6 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
         <Card className="p-6">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold">Current plan</h2>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="min-w-0 text-lg font-semibold sm:text-xl">Current plan</h2>
             {status?.status ? (
               <span
                 className={`px-2 py-1 text-xs font-semibold rounded-md ${badgeColor}`}
@@ -165,33 +165,33 @@ export function BillingPageClient() {
             <div className="mt-4 border-t border-white/10 pt-4">
               <div className="grid gap-2 text-sm text-white/70">
                 {displayBasePrice !== null && (
-                  <div className="flex justify-between">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-3">
                     <span>Base package:</span>
-                    <span className="font-medium text-white">
+                    <span className="min-w-0 font-medium text-white sm:text-right">
                       {formatCurrency(displayBasePrice)}/{isAnnual ? "yr" : "mo"}
                     </span>
                   </div>
                 )}
                 {displayIncludedUsers !== null && (
-                  <div className="flex justify-between">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-3">
                     <span>Included users:</span>
-                    <span className="font-medium text-white">
+                    <span className="min-w-0 font-medium text-white sm:text-right">
                       Up to {displayIncludedUsers > 0 ? displayIncludedUsers : "Unlimited"} users
                     </span>
                   </div>
                 )}
                 {status?.allocatedSeats && displayIncludedUsers && status.allocatedSeats > displayIncludedUsers ? (
-                  <div className="flex justify-between">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-3">
                     <span>Allocated users:</span>
-                    <span className="font-medium text-white">
+                    <span className="min-w-0 font-medium text-white sm:text-right">
                       {status.allocatedSeats} users
                     </span>
                   </div>
                 ) : null}
                 {displayPerUserCost !== null && (
-                  <div className="flex justify-between">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-3">
                     <span>Additional users:</span>
-                    <span className="font-medium text-white">
+                    <span className="min-w-0 font-medium text-white sm:text-right">
                       {formatCurrency(displayPerUserCost)}/user/{isAnnual ? "yr" : "mo"}
                     </span>
                   </div>
