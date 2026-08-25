@@ -28,6 +28,18 @@ function randomNonce() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/** base64url — avoids `+` being turned into a space by URLSearchParams */
+function encodeOAuthState(payload: OAuthStatePayload): string {
+  const json = JSON.stringify(payload);
+  return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeOAuthState(state: string): OAuthStatePayload {
+  const b64 = state.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  return JSON.parse(atob(padded)) as OAuthStatePayload;
+}
+
 export function saveOAuthIdentityDraft(draft: OAuthIdentityDraft) {
   sessionStorage.setItem(OAUTH_DRAFT_KEY, JSON.stringify(draft));
 }
@@ -63,7 +75,7 @@ export function beginOAuthRedirect(
     returnTo: opts.returnTo,
     nonce,
   };
-  const state = btoa(JSON.stringify(statePayload));
+  const state = encodeOAuthState(statePayload);
   sessionStorage.setItem(OAUTH_STATE_KEY, state);
 
   if (provider === "google") {
@@ -133,13 +145,19 @@ export function consumeOAuthRedirectResult(): {
 
   const saved = sessionStorage.getItem(OAUTH_STATE_KEY);
   sessionStorage.removeItem(OAUTH_STATE_KEY);
-  if (!saved || saved !== state) {
+
+  // No in-progress OAuth in this tab (browser Back after login, leftover hash
+  // after logout, or a refreshed callback URL). Clear the fragment and ignore.
+  if (!saved) {
+    return null;
+  }
+  if (saved !== state) {
     throw new Error("OAuth state mismatch. Please try again.");
   }
 
   let payload: OAuthStatePayload;
   try {
-    payload = JSON.parse(atob(state)) as OAuthStatePayload;
+    payload = decodeOAuthState(state);
   } catch {
     throw new Error("Invalid OAuth state.");
   }
