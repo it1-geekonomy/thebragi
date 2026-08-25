@@ -32,7 +32,9 @@ import {
 } from "@/features/checkout/lib/order-math";
 import {
   lookupGstin,
+  panFromGstin,
   resolveLocationFromAddress,
+  resolveLocationFromPostalCode,
   type GstinLookup,
 } from "@/features/checkout/lib/gst";
 import { saveVerifiedBilling } from "@/features/checkout/lib/billing-session";
@@ -41,6 +43,8 @@ import { SearchableSelect } from "@/shared/components/ui/SearchableSelect";
 import { OrderSummaryPanel } from "@/features/checkout/components/OrderSummaryPanel";
 import { useSubscriptionPlans } from "@/features/subscription/hooks/useSubscriptionPlans";
 import { fetchAuthSessionDetails } from "@/features/auth/lib/post-auth-routing";
+
+import { subscriptionApi, type SubscriptionQuote } from "@/features/subscription/api";
 
 // GSTN live lookup disabled until GST_VALIDATION_API_KEY is configured on the CRM backend.
 const SKIP_GST_VALIDATION = true;
@@ -106,6 +110,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   const [gstChecking, setGstChecking] = useState(false);
   const [locationResolving, setLocationResolving] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
+  const [quote, setQuote] = useState<SubscriptionQuote | null>(null);
+  const [loadingQuote, setLoadingQuote] = useState(false);
   const gstRequestId = useRef(0);
   const addressRequestId = useRef(0);
 
@@ -130,6 +136,36 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
       });
 
   useEffect(() => {
+    if (!plan?.id) return;
+    let active = true;
+    setLoadingQuote(true);
+    const timer = window.setTimeout(() => {
+      subscriptionApi
+        .calculateQuote({
+          planId: plan.id,
+          seats: resolvedSeats,
+          users: resolvedSeats,
+          billingCycle: cycle,
+          stateCode: stateCode || undefined,
+        })
+        .then((data) => {
+          if (active) setQuote(data);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch calculation quote:", err);
+        })
+        .finally(() => {
+          if (active) setLoadingQuote(false);
+        });
+    }, 150);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [plan?.id, resolvedSeats, cycle, stateCode]);
+
+  useEffect(() => {
     fetch("/api/location/countries")
       .then((res) => res.json())
       .then((data) => setCountries(data))
@@ -143,9 +179,26 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     }
     fetch(`/api/location/states?country=${country}`)
       .then((res) => res.json())
-      .then((data) => setStates(data))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setStates(data);
+          if (stateName && !stateCode) {
+            const match = data.find(
+              (s: { code: string; name: string }) =>
+                s.name.toLowerCase() === stateName.toLowerCase()
+            );
+            if (match) setStateCode(match.code);
+          } else if (stateCode && !stateName) {
+            const match = data.find(
+              (s: { code: string; name: string }) =>
+                s.code.toLowerCase() === stateCode.toLowerCase()
+            );
+            if (match) setStateName(match.name);
+          }
+        }
+      })
       .catch(() => {});
-  }, [country]);
+  }, [country, stateCode, stateName]);
 
   useEffect(() => {
     if (!isAuthenticated && !signupDraft) {
@@ -203,8 +256,14 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   }, [dispatch, isAuthenticated, organizationId, signupDraft]);
 
   useEffect(() => {
-    if (SKIP_GST_VALIDATION) return;
     const value = gstin.trim().toUpperCase();
+
+    const extractedPan = panFromGstin(value);
+    if (extractedPan) {
+      setPan(extractedPan);
+    }
+
+    if (SKIP_GST_VALIDATION) return;
     if (value.length < 15) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- drop GST validity until a full number is entered
       setGstLookup(null);
@@ -251,6 +310,18 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
 
     return () => window.clearTimeout(timer);
   }, [address]);
+
+  useEffect(() => {
+    const code = postalCode.trim();
+    if (!/^\d{6}$/.test(code)) return;
+
+    void resolveLocationFromPostalCode(code).then((location) => {
+      if (location.stateName) setStateName(location.stateName);
+      if (location.stateCode) setStateCode(location.stateCode);
+      if (location.country) setCountry(location.country);
+      if (location.city && !city) setCity(location.city);
+    });
+  }, [postalCode]);
 
   async function handlePay() {
     if (!plan) return;
@@ -367,7 +438,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 })
               : signupDraft
                 ? await paymentApi.createTrialAuth({
-                    name: billing.legalName.trim() || signupDraft.company,
+                    name: signupDraft.company?.trim() || billing.legalName.trim(),
                     superAdminEmail: signupDraft.email,
                     superAdminName: signupDraft.fullName,
                     industry: signupDraft.industry || undefined,
@@ -408,7 +479,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 ? { organizationId }
                 : signupDraft
                   ? {
-                      name: billing.legalName.trim() || signupDraft.company,
+                      name: signupDraft.company?.trim() || billing.legalName.trim(),
                       superAdminEmail: signupDraft.email,
                       superAdminName: signupDraft.fullName,
                       industry: signupDraft.industry || undefined,
@@ -447,8 +518,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         (typeof trialOrder?.amount === "number" && trialOrder.amount >= 100
           ? trialOrder.amount
           : TRIAL_AUTHORIZATION_PAISE);
-      const buyNowRupees = buyNowOrder?.quote?.total ?? buyNowOrder?.amount ?? totals.total;
-      const buyNowPaise = buyNowOrder?.amountPaise ?? Math.round(buyNowRupees * 100);
+      const buyNowRupees = buyNowOrder?.quote?.total ?? buyNowOrder?.amount ?? quote?.totalAmount ?? totals.total;
+      const buyNowPaise = buyNowOrder?.amountPaise ?? quote?.amountPaise ?? Math.round(buyNowRupees * 100);
 
       await initializePayment(
         {
@@ -575,7 +646,25 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         },
       );
     } catch (error: unknown) {
-      toast.error(getApiErrorMessage(error, "Payment failed."));
+      const msg = getApiErrorMessage(error, "Payment failed.");
+      if (/already exists|already registered/i.test(msg)) {
+        toast.error(msg, {
+          action: {
+            label: "Sign in",
+            onClick: () =>
+              router.push(
+                buildSignInForCheckout({
+                  plan: initial.plan,
+                  users: resolvedSeats,
+                  cycle,
+                  mode: purchaseMode,
+                }),
+              ),
+          },
+        });
+      } else {
+        toast.error(msg);
+      }
       setIsPaying(false);
     }
   }
@@ -728,7 +817,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 ? "Processing..."
                 : purchaseMode === "trial"
                   ? `Authorize ${formatCurrency(TRIAL_AUTHORIZATION_RUPEES)} & start trial`
-                  : `Pay ${formatCurrency(totals.total)} & activate`}
+                  : `Pay ${formatCurrency(quote?.totalAmount ?? totals.total)} & activate`}
             </Button>
           </form>
         )}
@@ -747,6 +836,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         minimumSeats={minimumSeats}
         maximumSeats={maximumSeats}
         purchaseMode={purchaseMode}
+        quote={quote}
+        loadingQuote={loadingQuote}
         onSeatsChange={(next) => setSeats(clampSeats(next, minimumSeats, maximumSeats))}
         onCycleChange={setCycle}
         className="order-1 lg:order-2"
