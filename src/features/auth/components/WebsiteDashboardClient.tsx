@@ -45,11 +45,11 @@ export function WebsiteDashboardClient() {
     : null;
 
   return (
-    <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-lg flex-col items-center justify-center px-5 py-16 text-center sm:px-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[#7dc890]">
+    <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full min-w-0 max-w-lg flex-col items-center justify-center px-5 py-16 text-center sm:px-8">
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7dc890] sm:tracking-[0.34em]">
         {isTrial ? "Trial workspace" : "Your workspace"}
       </p>
-      <h1 className="mt-5 text-3xl font-semibold text-white sm:text-4xl">Welcome back, {firstName}</h1>
+      <h1 className="mt-5 text-[clamp(1.75rem,6vw,2.25rem)] font-semibold text-white sm:text-4xl">Welcome back, {firstName}</h1>
       <p className="mt-3 text-sm leading-6 text-white/58">
         {isTrial
           ? daysRemaining != null
@@ -61,18 +61,18 @@ export function WebsiteDashboardClient() {
       <div className="mt-8 w-full rounded-xl border border-white/10 bg-white/[0.02] p-6 text-left shadow-lg">
         <h2 className="text-lg font-semibold text-white">Your Workspace</h2>
         <div className="mt-4 grid gap-3 text-sm">
-          <div className="flex justify-between border-b border-white/10 pb-3">
-            <span className="text-white/58">Account</span>
-            <span className="font-medium text-white">{userEmail}</span>
+          <div className="flex flex-col gap-1 border-b border-white/10 pb-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <span className="shrink-0 text-white/58">Account</span>
+            <span className="min-w-0 break-all font-medium text-white sm:text-right">{userEmail}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-white/58">{isTrial ? "Trial plan" : "Current plan"}</span>
-            <span className="font-medium text-[#a8dfb3]">{planName}</span>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <span className="shrink-0 text-white/58">{isTrial ? "Trial plan" : "Current plan"}</span>
+            <span className="min-w-0 font-medium text-[#a8dfb3] sm:text-right">{planName}</span>
           </div>
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+      <div className="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
         <Button 
           variant="secondary" 
           className="w-full" 

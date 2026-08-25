@@ -588,9 +588,9 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-start">
       <section className="order-2 rounded-lg border border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:order-1">
-        <div className="inline-flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <p className="text-sm font-semibold text-white">Billing & GST details</p>
-          <Link href={ROUTES.pricing} className="text-xs font-semibold text-white/42 hover:text-[#a8dfb3] sm:ml-2">
+          <Link href={ROUTES.pricing} className="text-xs font-semibold text-white/42 hover:text-[#a8dfb3]">
             Step 1 · Plan
           </Link>
         </div>
@@ -607,7 +607,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         </div>
 
         {!organizationId && !signupDraft ? (
-          <div className="mt-8 flex flex-col items-center justify-center space-y-4 rounded-lg border border-white/10 bg-black/35 p-10">
+          <div className="mt-8 flex flex-col items-center justify-center space-y-4 rounded-lg border border-white/10 bg-black/35 p-6 sm:p-10">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent" />
             <p className="text-sm font-medium text-white/70">Preparing checkout...</p>
           </div>
