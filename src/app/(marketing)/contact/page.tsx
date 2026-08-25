@@ -12,7 +12,7 @@ export default function ContactPage() {
     <MarketingLayout>
       <main className="px-5 py-16 sm:px-8 lg:px-10">
         <SectionHeading eyebrow="Contact" title="Talk to Bragi">
-          For early access, plan questions, or migration help, send the team a note.
+          For early access plan questions or migration help, send the team a note.
         </SectionHeading>
         <form className="mx-auto mt-10 grid max-w-2xl gap-5 rounded-lg border border-white/10 bg-white/[0.04] p-6">
           <Input id="name" label="Name" placeholder="Your name" />
