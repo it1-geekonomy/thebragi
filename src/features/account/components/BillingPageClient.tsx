@@ -85,11 +85,25 @@ export function BillingPageClient() {
           ? "bg-red-400 text-white"
           : "";
 
+  const isAnnual = status?.billingCycle === "annual";
+
   const dynamicPlan = plans.find(
     (p) =>
+      (status?.planId && p.id === status.planId) ||
       p.name.toLowerCase() === status?.plan?.toLowerCase() ||
       p.slug.toLowerCase() === status?.plan?.toLowerCase(),
   );
+
+  const displayBasePrice = dynamicPlan
+    ? (isAnnual ? dynamicPlan.priceAnnual : dynamicPlan.priceMonthly)
+    : (status?.priceAtActivation ?? 0);
+
+  const displayPerUserCost = dynamicPlan
+    ? (isAnnual ? dynamicPlan.perUserCostAnnual : dynamicPlan.perUserCostMonthly)
+    : (status?.perUserCost ?? 0);
+
+  const displayIncludedUsers =
+    status?.maxUsers ?? dynamicPlan?.includedUsers ?? dynamicPlan?.maxUsers ?? 10;
 
   return (
     <main>
@@ -143,23 +157,27 @@ export function BillingPageClient() {
                 <div className="flex justify-between">
                   <span>Base package:</span>
                   <span className="font-medium text-white">
-                    {formatCurrency(status?.priceAtActivation ?? dynamicPlan?.priceMonthly ?? 0)}/{status?.billingCycle === "annual" ? "yr" : "mo"}
+                    {formatCurrency(displayBasePrice)}/{isAnnual ? "yr" : "mo"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Included users:</span>
                   <span className="font-medium text-white">
-                    Up to{" "}
-                    {(status?.maxUsers ?? dynamicPlan?.maxUsers ?? 0) > 0
-                      ? (status?.maxUsers ?? dynamicPlan?.maxUsers)
-                      : "Unlimited"}{" "}
-                    users
+                    Up to {displayIncludedUsers > 0 ? displayIncludedUsers : "Unlimited"} users
                   </span>
                 </div>
+                {status?.allocatedSeats && status.allocatedSeats > displayIncludedUsers ? (
+                  <div className="flex justify-between">
+                    <span>Allocated users:</span>
+                    <span className="font-medium text-white">
+                      {status.allocatedSeats} users
+                    </span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between">
                   <span>Additional users:</span>
                   <span className="font-medium text-white">
-                    {formatCurrency(status?.perUserCost ?? dynamicPlan?.perUserCostMonthly ?? 0)}/user/{status?.billingCycle === "annual" ? "yr" : "mo"}
+                    {formatCurrency(displayPerUserCost)}/user/{isAnnual ? "yr" : "mo"}
                   </span>
                 </div>
               </div>

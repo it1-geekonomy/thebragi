@@ -31,7 +31,8 @@ import { OAuthButtons } from "./OAuthButtons";
 import { useSubscriptionPlans, type DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
 import { paymentApi } from "@/features/subscription/services/paymentApi";
 import { BackButton } from "@/shared/components/ui/BackButton";
-import { clearSignupDraft } from "@/features/checkout/lib/billing-session";
+import { clearSignupDraft, saveSignupDraft } from "@/features/checkout/lib/billing-session";
+import { buildCheckoutPath } from "@/features/checkout/lib/checkout-params";
 import { TRIAL_AUTHORIZATION_PAISE, TRIAL_AUTHORIZATION_RUPEES } from "@/features/checkout/lib/order-math";
 import { useRazorpayCheckout, type RazorpaySuccessResponse } from "@/features/subscription/hooks/useRazorpayCheckout";
 import {
@@ -101,68 +102,24 @@ function PasswordMode({ returnTo }: { returnTo: string; plans: DynamicPlan[] }) 
           });
 
           if (data.code === "PAYMENT_PENDING") {
-            setIsResumingTrial(true);
-            clearSignupDraft();
-
-            const trialAuth = await paymentApi.resumeTrialAuth({
+            const pendingDetails = await paymentApi.getPendingSignup(values.email).catch(() => null);
+            saveSignupDraft({
               email: values.email,
               password: values.password,
+              company: pendingDetails?.company || pendingDetails?.name || "",
+              fullName: pendingDetails?.name || values.email.split("@")[0],
+              industry: pendingDetails?.industry || "Technology",
+              resume: true,
+              planId: pendingDetails?.planId || undefined,
             });
 
-            const razorpayKey =
-              trialAuth?.keyId ?? process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "";
-            if (!razorpayKey.startsWith("rzp_test_") && process.env.NODE_ENV !== "production") {
-              toast.error("Local checkout requires a Razorpay test key (rzp_test_…).");
-              setIsResumingTrial(false);
-              return;
-            }
+            toast.info("Please review your plan and authorize checkout to continue.");
+            const targetPlan = pendingDetails?.planId || "growth";
+            const targetPath = returnTo?.startsWith("/checkout")
+              ? returnTo
+              : buildCheckoutPath({ plan: targetPlan, mode: "trial", cycle: "monthly", users: 10 });
 
-            const orderId = trialAuth?.orderId ?? trialAuth?.id;
-            if (!orderId) {
-              toast.error("Missing trial order id. Please try again.");
-              setIsResumingTrial(false);
-              return;
-            }
-
-            await initializePayment(
-              {
-                key: razorpayKey,
-                currency: trialAuth?.currency ?? "INR",
-                amount:
-                  typeof trialAuth?.amountPaise === "number"
-                    ? trialAuth.amountPaise
-                    : TRIAL_AUTHORIZATION_PAISE,
-                order_id: orderId,
-                name: brand.name,
-                description: `Free trial authorization — INR ${TRIAL_AUTHORIZATION_RUPEES}`,
-                prefill: { email: values.email, name: values.email.split("@")[0] },
-                theme: { color: brand.colors.greenBright },
-              },
-              async (response: RazorpaySuccessResponse) => {
-                await paymentApi.verifyTrialAuth({
-                  ...response,
-                  pendingTrialId: trialAuth.pendingTrialId,
-                });
-
-                const loginData = await apiClient<AuthResponse>("/auth/login", {
-                  method: "POST",
-                  body: JSON.stringify({ email: values.email, password: values.password }),
-                });
-
-                const session = await initAuthSession(dispatch, loginData, values.email, true);
-                if (session.requiresOrgSelection) {
-                  router.push(ROUTES.selectOrganization);
-                  return;
-                }
-                router.push(ROUTES.billingConfirmation);
-              },
-              (error) => {
-                toast.error(error?.message || "Payment cancelled.");
-                setIsResumingTrial(false);
-                router.push(ROUTES.pricing);
-              },
-            );
-
+            router.push(targetPath);
             return;
           }
 

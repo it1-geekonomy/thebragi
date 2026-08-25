@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Country, State } from "country-state-city";
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code")?.trim() ?? "";
@@ -19,10 +20,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
 
+    const countryName = String(po.Country || "India");
+    const stateName = String(po.State || "");
+    const city = String(po.District || po.Name || "");
+
+    const resolvedCountry = Country.getAllCountries().find(
+      (c) =>
+        c.name.toLowerCase() === countryName.toLowerCase() ||
+        c.isoCode.toLowerCase() === countryName.toLowerCase(),
+    );
+    const countryCode = resolvedCountry?.isoCode || "IN";
+
+    const resolvedState = State.getStatesOfCountry(countryCode).find(
+      (s) =>
+        s.name.toLowerCase() === stateName.toLowerCase() ||
+        s.isoCode.toLowerCase() === stateName.toLowerCase(),
+    );
+
     return NextResponse.json({
-      countryName: "India",
-      stateName: String(po.State || ""),
-      city: String(po.District || po.Name || ""),
+      countryName: resolvedCountry?.name || countryName,
+      countryCode: countryCode,
+      stateName: resolvedState?.name || stateName,
+      stateCode: resolvedState?.isoCode || "",
+      city,
     });
   } catch {
     return NextResponse.json({ error: "lookup failed" }, { status: 502 });
