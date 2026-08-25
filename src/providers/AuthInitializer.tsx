@@ -37,6 +37,7 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
             organizationId: details.organizationId,
             userName: details.userName,
             userEmail: details.userEmail,
+            companyName: details.companyName,
             role: details.role,
             trialStartedAt: details.trialStartedAt,
             trialEndsAt: details.trialEndsAt,

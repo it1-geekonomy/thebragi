@@ -20,6 +20,7 @@ export type AuthSessionDetails = {
   userName: string | null;
   userEmail: string | null;
   role: string | null;
+  companyName: string | null;
   trialStartedAt: string | null;
   trialEndsAt: string | null;
   ok: boolean;
@@ -34,8 +35,12 @@ type SessionApiResponse = {
   subscriptionStatus?: string;
   status?: string;
   subscription?: { status?: string; planSlug?: string; plan?: string };
-  user?: { createdAt?: string; name?: string; email?: string; organizationStatus?: string; organizationId?: string };
+  user?: { createdAt?: string; name?: string; email?: string; company?: string; organizationStatus?: string; organizationId?: string };
   role?: string;
+  organizationName?: string;
+  companyName?: string;
+  company?: string;
+  organization?: { id?: string; name?: string; companyName?: string; legalName?: string };
 };
 
 const EMPTY_SESSION: AuthSessionDetails = {
@@ -45,6 +50,7 @@ const EMPTY_SESSION: AuthSessionDetails = {
   userName: null,
   userEmail: null,
   role: null,
+  companyName: null,
   trialStartedAt: null,
   trialEndsAt: null,
   ok: false,
@@ -142,6 +148,16 @@ export async function fetchAuthSessionDetails(token: string): Promise<AuthSessio
       }
     }
 
+    const companyName =
+      data.organizationName ??
+      data.companyName ??
+      data.company ??
+      data.organization?.name ??
+      data.organization?.companyName ??
+      data.organization?.legalName ??
+      data.user?.company ??
+      null;
+
     return {
       subscriptionStatus,
       activePlan,
@@ -149,6 +165,7 @@ export async function fetchAuthSessionDetails(token: string): Promise<AuthSessio
       userName: data.user?.name ?? null,
       userEmail: data.user?.email ?? null,
       role: data.role ?? null,
+      companyName,
       trialStartedAt,
       trialEndsAt,
       ok: true,
