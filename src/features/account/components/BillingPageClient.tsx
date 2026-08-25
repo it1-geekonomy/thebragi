@@ -79,11 +79,11 @@ export function BillingPageClient() {
   const badgeColor =
     statusKind === "active"
       ? "bg-[#7dc890] text-black"
-      : statusKind === "trial"
+      : statusKind === "trial" || statusKind === "trialing"
         ? "bg-blue-300 text-black"
-        : statusKind === "past_due"
+        : statusKind === "past_due" || statusKind === "expired"
           ? "bg-red-400 text-white"
-          : "";
+          : "bg-white/10 text-white";
 
   const isAnnual = status?.billingCycle === "annual";
 
@@ -94,16 +94,26 @@ export function BillingPageClient() {
       p.slug.toLowerCase() === status?.plan?.toLowerCase(),
   );
 
-  const displayBasePrice = dynamicPlan
-    ? (isAnnual ? dynamicPlan.priceAnnual : dynamicPlan.priceMonthly)
-    : (status?.priceAtActivation ?? 0);
+  const displayBasePrice =
+    status?.priceAtActivation !== undefined
+      ? status.priceAtActivation
+      : dynamicPlan
+        ? isAnnual
+          ? dynamicPlan.priceAnnual
+          : dynamicPlan.priceMonthly
+        : null;
 
-  const displayPerUserCost = dynamicPlan
-    ? (isAnnual ? dynamicPlan.perUserCostAnnual : dynamicPlan.perUserCostMonthly)
-    : (status?.perUserCost ?? 0);
+  const displayPerUserCost =
+    status?.perUserCost !== undefined
+      ? status.perUserCost
+      : dynamicPlan
+        ? isAnnual
+          ? dynamicPlan.perUserCostAnnual
+          : dynamicPlan.perUserCostMonthly
+        : null;
 
   const displayIncludedUsers =
-    status?.maxUsers ?? dynamicPlan?.includedUsers ?? dynamicPlan?.maxUsers ?? 10;
+    status?.maxUsers ?? dynamicPlan?.includedUsers ?? dynamicPlan?.maxUsers ?? null;
 
   return (
     <main>
@@ -151,22 +161,26 @@ export function BillingPageClient() {
             </p>
           ) : null}
 
-          {(dynamicPlan || status?.priceAtActivation !== undefined) && (
+          {(displayBasePrice !== null || displayIncludedUsers !== null || displayPerUserCost !== null) && (
             <div className="mt-4 border-t border-white/10 pt-4">
               <div className="grid gap-2 text-sm text-white/70">
-                <div className="flex justify-between">
-                  <span>Base package:</span>
-                  <span className="font-medium text-white">
-                    {formatCurrency(displayBasePrice)}/{isAnnual ? "yr" : "mo"}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Included users:</span>
-                  <span className="font-medium text-white">
-                    Up to {displayIncludedUsers > 0 ? displayIncludedUsers : "Unlimited"} users
-                  </span>
-                </div>
-                {status?.allocatedSeats && status.allocatedSeats > displayIncludedUsers ? (
+                {displayBasePrice !== null && (
+                  <div className="flex justify-between">
+                    <span>Base package:</span>
+                    <span className="font-medium text-white">
+                      {formatCurrency(displayBasePrice)}/{isAnnual ? "yr" : "mo"}
+                    </span>
+                  </div>
+                )}
+                {displayIncludedUsers !== null && (
+                  <div className="flex justify-between">
+                    <span>Included users:</span>
+                    <span className="font-medium text-white">
+                      Up to {displayIncludedUsers > 0 ? displayIncludedUsers : "Unlimited"} users
+                    </span>
+                  </div>
+                )}
+                {status?.allocatedSeats && displayIncludedUsers && status.allocatedSeats > displayIncludedUsers ? (
                   <div className="flex justify-between">
                     <span>Allocated users:</span>
                     <span className="font-medium text-white">
@@ -174,36 +188,33 @@ export function BillingPageClient() {
                     </span>
                   </div>
                 ) : null}
-                <div className="flex justify-between">
-                  <span>Additional users:</span>
-                  <span className="font-medium text-white">
-                    {formatCurrency(displayPerUserCost)}/user/{isAnnual ? "yr" : "mo"}
-                  </span>
-                </div>
+                {displayPerUserCost !== null && (
+                  <div className="flex justify-between">
+                    <span>Additional users:</span>
+                    <span className="font-medium text-white">
+                      {formatCurrency(displayPerUserCost)}/user/{isAnnual ? "yr" : "mo"}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {statusKind === "trial" && (
-            <p className="mt-2 text-sm text-white/52">
-              Your trial ends on{" "}
-              {status?.endDate
-                ? new Date(status.endDate).toLocaleDateString()
-                : "N/A"}
-              . ({status?.daysRemaining ?? 0} days remaining)
+          {(statusKind === "trial" || statusKind === "trialing") && (
+            <p className="mt-3 text-sm text-white/52">
+              {status?.endDate ? `Your trial ends on ${new Date(status.endDate).toLocaleDateString()}.` : ""}
+              {status?.daysRemaining !== undefined ? ` (${status.daysRemaining} day${status.daysRemaining === 1 ? "" : "s"} remaining)` : ""}
             </p>
           )}
 
           {statusKind === "active" && (
-            <p className="mt-2 text-sm text-white/52">
-              Next renewal:{" "}
-              {status?.endDate
-                ? new Date(status.endDate).toLocaleDateString()
-                : "N/A"}
-              .
-              {status?.autoPayEnabled
-                ? " Auto-pay is active."
-                : " Auto-pay is inactive."}
+            <p className="mt-3 text-sm text-white/52">
+              {status?.endDate ? `Next renewal: ${new Date(status.endDate).toLocaleDateString()}.` : ""}
+              {status?.autoPayEnabled !== undefined
+                ? status.autoPayEnabled
+                  ? " Auto-pay is active."
+                  : " Auto-pay is inactive."
+                : ""}
             </p>
           )}
 
@@ -214,7 +225,7 @@ export function BillingPageClient() {
             >
               Change Plan
             </Button>
-            {status?.autoPayEnabled && (
+            {status?.autoPayEnabled === true && (
               <Button
                 type="button"
                 variant="secondary"

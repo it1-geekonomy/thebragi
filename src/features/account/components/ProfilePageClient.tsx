@@ -5,14 +5,15 @@ import { Card } from "@/shared/components/ui/Card";
 import { Input } from "@/shared/components/ui/Input";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
-import { useAppSelector, useAppDispatch } from "@/store/hooks";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { setMockSession } from "@/store";
 import { subscriptionApi } from "@/features/subscription/api";
 import { paymentApi } from "@/features/subscription/services/paymentApi";
 import { apiClient } from "@/shared/lib/api-client";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/config/routes";
-import { readSignupDraft, clearSignupDraft } from "@/features/checkout/lib/billing-session";
-import { clearSession } from "@/store";
+import { readSignupDraft } from "@/features/checkout/lib/billing-session";
+import { workspaceApi, type WorkspaceInfo } from "@/features/auth/services/workspaceApi";
 
 type ProfileView = {
   name: string;
@@ -25,6 +26,60 @@ type ProfileView = {
   pendingCheckout: boolean;
 };
 
+function extractCompanyName(obj: unknown): string {
+  if (!obj || typeof obj !== "object") return "";
+  const record = obj as Record<string, unknown>;
+
+  if (typeof record.registeredLegalName === "string" && record.registeredLegalName.trim()) {
+    return record.registeredLegalName.trim();
+  }
+  if (typeof record.companyName === "string" && record.companyName.trim()) {
+    return record.companyName.trim();
+  }
+  if (typeof record.legalName === "string" && record.legalName.trim()) {
+    return record.legalName.trim();
+  }
+  if (typeof record.company === "string" && record.company.trim()) {
+    return record.company.trim();
+  }
+  if (typeof record.organizationName === "string" && record.organizationName.trim()) {
+    return record.organizationName.trim();
+  }
+  if (typeof record.name === "string" && record.name.trim()) {
+    return record.name.trim();
+  }
+
+  if (record.organization) {
+    const nested = extractCompanyName(record.organization);
+    if (nested) return nested;
+  }
+  if (record.organizationProfile) {
+    const nested = extractCompanyName(record.organizationProfile);
+    if (nested) return nested;
+  }
+  if (record.user) {
+    const nested = extractCompanyName(record.user);
+    if (nested) return nested;
+  }
+  if (record.data) {
+    const nested = extractCompanyName(record.data);
+    if (nested) return nested;
+  }
+
+  return "";
+}
+
+function extractList(obj: unknown): unknown[] {
+  if (Array.isArray(obj)) return obj;
+  if (!obj || typeof obj !== "object") return [];
+  const record = obj as Record<string, unknown>;
+  if (Array.isArray(record.data)) return record.data;
+  if (Array.isArray(record.workspaces)) return record.workspaces;
+  if (Array.isArray(record.organizations)) return record.organizations;
+  if (Array.isArray(record.orgs)) return record.orgs;
+  return [];
+}
+
 export function ProfilePageClient() {
   const session = useAppSelector((state) => state.session);
   const dispatch = useAppDispatch();
@@ -36,42 +91,80 @@ export function ProfilePageClient() {
     let cancelled = false;
 
     async function load() {
-      if (session.organizationId) {
-        const [org, sub] = await Promise.all([
-          apiClient<{ name?: string }>(`/organizations/${session.organizationId}`).catch(() => null),
-          subscriptionApi.getSubscriptionStatus(session.organizationId).catch(() => null),
-        ]);
-        if (cancelled) return;
-        const status = sub?.status?.toUpperCase() ?? "";
-        const subscribed = status === "ACTIVE" || status === "TRIAL" || status === "TRIALING";
-        setProfile({
-          name: session.userName || "",
-          email: session.userEmail || "",
-          company: org?.name || "",
-          role: session.role?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "",
-          plan: sub?.plan || "",
-          subscribed,
-          trialing: status === "TRIAL" || status === "TRIALING",
-          pendingCheckout: false,
-        });
-        return;
-      }
-
-      if (!session.userEmail) return;
-      const pending = await paymentApi.getPendingSignup(session.userEmail).catch(() => null);
-      if (cancelled) return;
-
       const draft = readSignupDraft();
 
+      const [
+        workspaces,
+        orgById,
+        orgProfiles,
+        singleOrgProfile,
+        orgMe,
+        authSession,
+        sub,
+        pending,
+      ] = await Promise.all([
+        workspaceApi.getWorkspaces().catch(() => [] as WorkspaceInfo[]),
+        session.organizationId
+          ? apiClient(`/organizations/${session.organizationId}`).catch(() => null)
+          : null,
+        apiClient("/organization-profiles").catch(() => null),
+        apiClient("/organization-profile").catch(() => null),
+        apiClient("/organizations/me").catch(() => null),
+        apiClient("/auth/session").catch(() => null),
+        session.organizationId
+          ? subscriptionApi.getSubscriptionStatus(session.organizationId).catch(() => null)
+          : null,
+        session.userEmail
+          ? paymentApi.getPendingSignup(session.userEmail).catch(() => null)
+          : null,
+      ]);
+
+      if (cancelled) return;
+
+      const wsList = extractList(workspaces);
+      const currentWorkspace =
+        wsList.find((w: any) => w && (w.id === session.organizationId || w.isCurrent)) || wsList[0];
+
+      const orgProfilesList = extractList(orgProfiles);
+      const firstOrgProfile = orgProfilesList.length > 0 ? orgProfilesList[0] : orgProfiles;
+
+      const company =
+        extractCompanyName(currentWorkspace) ||
+        extractCompanyName(orgById) ||
+        extractCompanyName(firstOrgProfile) ||
+        extractCompanyName(singleOrgProfile) ||
+        extractCompanyName(orgMe) ||
+        extractCompanyName(authSession) ||
+        session.companyName ||
+        pending?.company ||
+        pending?.name ||
+        draft?.company ||
+        "";
+
+      if (company && company !== session.companyName) {
+        dispatch(setMockSession({ companyName: company }));
+      }
+
+      const rawStatus = (sub as any)?.status?.toUpperCase() ?? session.subscriptionStatus?.toUpperCase() ?? "";
+      const subscribed =
+        rawStatus === "ACTIVE" ||
+        rawStatus === "TRIAL" ||
+        rawStatus === "TRIALING" ||
+        session.subscriptionStatus === "active" ||
+        session.subscriptionStatus === "trialing";
+      const isTrialing = rawStatus === "TRIAL" || rawStatus === "TRIALING" || session.subscriptionStatus === "trialing";
+
+      const role = (currentWorkspace as any)?.role || (authSession as any)?.role || session.role || "";
+
       setProfile({
-        name: pending?.name || draft?.fullName || session.userName || "",
-        email: pending?.email || draft?.email || session.userEmail || "",
-        company: pending?.company || draft?.company || "",
-        role: "",
-        plan: pending?.planName || draft?.planSlug || "",
-        subscribed: false,
-        trialing: false,
-        pendingCheckout: Boolean(pending || draft?.planSlug),
+        name: session.userName || (authSession as any)?.user?.name || pending?.name || draft?.fullName || "",
+        email: session.userEmail || (authSession as any)?.user?.email || pending?.email || draft?.email || "",
+        company,
+        role: role ? role.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "",
+        plan: (sub as any)?.plan || session.activePlan || pending?.planName || draft?.planSlug || "",
+        subscribed,
+        trialing: isTrialing,
+        pendingCheckout: Boolean(!subscribed && (pending || draft?.planSlug)),
       });
     }
 
@@ -79,7 +172,16 @@ export function ProfilePageClient() {
     return () => {
       cancelled = true;
     };
-  }, [session.organizationId, session.userEmail, session.userName, session.role]);
+  }, [
+    session.organizationId,
+    session.userEmail,
+    session.userName,
+    session.role,
+    session.companyName,
+    session.subscriptionStatus,
+    session.activePlan,
+    dispatch,
+  ]);
 
   if (!profile) {
     return (
