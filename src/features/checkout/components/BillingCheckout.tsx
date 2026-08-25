@@ -32,7 +32,6 @@ import {
 } from "@/features/checkout/lib/order-math";
 import {
   lookupGstin,
-  panFromGstin,
   resolveLocationFromAddress,
   resolveLocationFromPostalCode,
   type GstinLookup,
@@ -57,7 +56,6 @@ function syncCheckoutUrl(params: CheckoutParams) {
 function applyGstLookup(
   setters: {
     setLegalName: (value: string) => void;
-    setPan: (value: string) => void;
     setAddress: (value: string) => void;
     setStateCode: (value: string) => void;
     setStateName: (value: string) => void;
@@ -66,7 +64,6 @@ function applyGstLookup(
   result: GstinLookup,
 ) {
   if (result.legalName) setters.setLegalName(result.legalName);
-  if (result.pan) setters.setPan(result.pan);
   if (result.address) setters.setAddress(result.address);
   const code = result.gstin.slice(0, 2);
   if (code) {
@@ -258,11 +255,6 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   useEffect(() => {
     const value = gstin.trim().toUpperCase();
 
-    const extractedPan = panFromGstin(value);
-    if (extractedPan) {
-      setPan(extractedPan);
-    }
-
     if (SKIP_GST_VALIDATION) return;
     if (value.length < 15) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- drop GST validity until a full number is entered
@@ -280,7 +272,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         setGstLookup(result);
         if (result?.valid) {
           applyGstLookup(
-            { setLegalName, setPan, setAddress, setStateCode, setStateName, setCountry },
+            { setLegalName, setAddress, setStateCode, setStateName, setCountry },
             result,
           );
         }
@@ -539,106 +531,114 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           theme: { color: brand.colors.greenBright },
         },
         async (response: RazorpaySuccessResponse) => {
-          const pendingTrialId = trialOrder?.pendingTrialId ?? buyNowOrder?.pendingTrialId;
-          const billingProfile = {
-            registeredLegalName: billing.legalName,
-            gstin: billing.gstin,
-            panNumber: billing.pan,
-            streetAddress: billing.address,
-            city: billing.city,
-            state: billing.stateName,
-            postalCode: billing.postalCode,
-            country: billing.country,
-          };
+          try {
+            const pendingTrialId = trialOrder?.pendingTrialId ?? buyNowOrder?.pendingTrialId;
+            const billingProfile = {
+              registeredLegalName: billing.legalName,
+              gstin: billing.gstin,
+              panNumber: billing.pan,
+              streetAddress: billing.address,
+              city: billing.city,
+              state: billing.stateName,
+              postalCode: billing.postalCode,
+              country: billing.country,
+            };
 
-          let paidOrganizationId = organizationId;
+            let paidOrganizationId = organizationId;
 
-          if (purchaseMode === "trial") {
-            if (!pendingTrialId) throw new Error("Missing trial checkout id.");
-            const verified = await paymentApi.verifyTrialAuth({
-              ...response,
-              pendingTrialId,
-              billing,
-            });
-            paidOrganizationId = verified.organizationId ?? paidOrganizationId;
-          } else {
-            const verified = await paymentApi.verifyBuyNowPayment({
-              ...response,
-              ...(organizationId ? { organizationId } : { pendingTrialId }),
-              planId: plan.id,
-              users: resolvedSeats,
-            });
-            paidOrganizationId = verified.organizationId ?? paidOrganizationId;
-          }
+            if (purchaseMode === "trial") {
+              if (!pendingTrialId) throw new Error("Missing trial checkout id.");
+              const verified = await paymentApi.verifyTrialAuth({
+                ...response,
+                pendingTrialId,
+                billing,
+              });
+              paidOrganizationId = verified.organizationId ?? paidOrganizationId;
+            } else {
+              const verified = await paymentApi.verifyBuyNowPayment({
+                ...response,
+                ...(organizationId ? { organizationId } : { pendingTrialId }),
+                planId: plan.id,
+                users: resolvedSeats,
+              });
+              paidOrganizationId = verified.organizationId ?? paidOrganizationId;
+            }
 
-          if (signupDraft) {
-            try {
-              if (
-                (signupDraft.authProvider === "google" ||
-                  signupDraft.authProvider === "microsoft") &&
-                signupDraft.idToken
-              ) {
-                const loginData = await apiClient<{ accessToken: string }>("/auth/oauth", {
-                  method: "POST",
-                  body: JSON.stringify({
-                    authProvider: signupDraft.authProvider,
-                    idToken: signupDraft.idToken,
-                  }),
-                });
-                localStorage.setItem(
-                  "accessToken",
-                  (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
-                );
-              } else if (signupDraft.password) {
-                const loginData = await apiClient<{ accessToken: string; user?: { name?: string } }>(
-                  "/auth/login",
-                  {
+            if (signupDraft) {
+              try {
+                if (
+                  (signupDraft.authProvider === "google" ||
+                    signupDraft.authProvider === "microsoft") &&
+                  signupDraft.idToken
+                ) {
+                  const loginData = await apiClient<{ accessToken: string }>("/auth/oauth", {
                     method: "POST",
                     body: JSON.stringify({
-                      email: signupDraft.email,
-                      password: signupDraft.password,
+                      authProvider: signupDraft.authProvider,
+                      idToken: signupDraft.idToken,
                     }),
-                  },
-                );
-                localStorage.setItem(
-                  "accessToken",
-                  (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
-                );
+                  });
+                  localStorage.setItem(
+                    "accessToken",
+                    (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
+                  );
+                } else if (signupDraft.password) {
+                  const loginData = await apiClient<{ accessToken: string; user?: { name?: string } }>(
+                    "/auth/login",
+                    {
+                      method: "POST",
+                      body: JSON.stringify({
+                        email: signupDraft.email,
+                        password: signupDraft.password,
+                        appType: "website",
+                      }),
+                    },
+                  );
+                  localStorage.setItem(
+                    "accessToken",
+                    (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
+                  );
+                }
+              } catch (authError) {
+                console.warn("Auto-login following payment verification failed:", authError);
+                toast.info("Payment successful! Please sign in to access your account.");
+              } finally {
+                clearSignupDraft();
               }
-            } catch (authError) {
-              console.warn("Auto-login following payment verification failed:", authError);
-              toast.info("Payment successful! Please sign in to access your account.");
-            } finally {
-              clearSignupDraft();
             }
-          }
 
-          if (paidOrganizationId && localStorage.getItem("accessToken")) {
-            try {
-              await paymentApi.updateOrganizationProfile(paidOrganizationId, billingProfile);
-            } catch {
-              // payment already succeeded — don't fail checkout if profile save is rejected
+            if (paidOrganizationId && localStorage.getItem("accessToken")) {
+              try {
+                await paymentApi.updateOrganizationProfile(paidOrganizationId, billingProfile);
+              } catch {
+                // payment already succeeded — don't fail checkout if profile save is rejected
+              }
             }
-          }
 
-          const token = localStorage.getItem("accessToken");
-          const details = token ? await fetchAuthSessionDetails(token).catch(() => null) : null;
-          dispatch(
-            setMockSession({
-              isAuthenticated: Boolean(token),
-              scope: token ? "full" : "anonymous",
-              isNewSignup: Boolean(signupDraft),
-              userEmail: signupDraft?.email ?? details?.userEmail ?? userEmail,
-              userName: signupDraft?.fullName ?? details?.userName ?? userName,
-              activePlan: details?.activePlan ?? plan.slug,
-              subscriptionStatus:
-                details?.subscriptionStatus ?? (purchaseMode === "trial" ? "trialing" : "active"),
-              organizationId: details?.organizationId ?? paidOrganizationId,
-              trialStartedAt: details?.trialStartedAt ?? null,
-              trialEndsAt: details?.trialEndsAt ?? null,
-            }),
-          );
-          router.push(purchaseMode === "trial" ? ROUTES.billingConfirmation : "/checkout/success");
+            const token = localStorage.getItem("accessToken");
+            const details = token ? await fetchAuthSessionDetails(token).catch(() => null) : null;
+            dispatch(
+              setMockSession({
+                isAuthenticated: Boolean(token),
+                scope: token ? "full" : "anonymous",
+                isNewSignup: Boolean(signupDraft),
+                userEmail: signupDraft?.email ?? details?.userEmail ?? userEmail,
+                userName: signupDraft?.fullName ?? details?.userName ?? userName,
+                activePlan: details?.activePlan ?? plan.slug,
+                subscriptionStatus:
+                  details?.subscriptionStatus ?? (purchaseMode === "trial" ? "trialing" : "active"),
+                organizationId: details?.organizationId ?? paidOrganizationId,
+                trialStartedAt: details?.trialStartedAt ?? null,
+                trialEndsAt: details?.trialEndsAt ?? null,
+              }),
+            );
+            router.push(purchaseMode === "trial" ? ROUTES.billingConfirmation : "/checkout/success");
+          } catch (paymentErr) {
+            console.error("Post-payment processing failed:", paymentErr);
+            toast.error(getApiErrorMessage(paymentErr, "Could not finalize checkout."));
+          } finally {
+            setIsPaying(false);
+          }
         },
         (error) => {
           const message = error?.message || "Payment failed.";
