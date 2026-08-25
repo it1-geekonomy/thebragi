@@ -85,6 +85,7 @@ export function ProfilePageClient() {
   const dispatch = useAppDispatch();
   const router = useRouter();
   const [profile, setProfile] = useState<ProfileView | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,6 +206,36 @@ export function ProfilePageClient() {
     ["Plan", profile.plan || "None"],
   ];
 
+  const handleDeleteAccount = async () => {
+    if (!profile?.email) return;
+    
+    if (!window.confirm("Are you sure you want to delete your pending account? This cannot be undone.")) return;
+
+    try {
+      setIsDeleting(true);
+      const draft = readSignupDraft();
+      
+      await paymentApi.deletePendingSignup({
+        email: profile.email,
+        password: draft?.password,
+        providerUserId: draft?.providerUserId,
+      });
+      
+      clearSignupDraft();
+      dispatch(clearSession());
+      router.push(ROUTES.home);
+    } catch (err: any) {
+      console.error("Failed to delete account", err);
+      // Give a helpful message based on the error
+      if (err.status === 400) {
+         alert("Failed to authenticate. Your draft password was missing or invalid. Please complete signup again to reset your password or sign in with Google/Microsoft if you originally used that method.");
+      } else {
+         alert("Failed to delete account. Please try again.");
+      }
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <main>
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -260,6 +291,22 @@ export function ProfilePageClient() {
                 <span className="font-semibold text-white/78">{value}</span>
               </div>
             ))}
+          </div>
+
+          <div className="mt-8 pt-6 border-t border-white/10">
+            <h3 className="text-sm font-semibold text-red-500 mb-2">Danger Zone</h3>
+            <p className="text-xs text-white/52 mb-4">
+              Permanently delete your pending account and free up this email address.
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full border border-red-500/50 text-red-500 bg-red-500/10 hover:bg-red-500/20"
+              onClick={handleDeleteAccount}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete Account"}
+            </Button>
           </div>
         </Card>
       </div>
