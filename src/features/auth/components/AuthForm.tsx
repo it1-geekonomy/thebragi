@@ -275,9 +275,9 @@ function PlanSummaryAside({
 
   return (
     <aside className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold text-white">{plan.name}</h2>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-white sm:text-xl">{plan.name}</h2>
           <p className="mt-1 text-sm text-white/52">{plan.description}</p>
         </div>
         <span className="shrink-0 rounded-full border border-[#7dc890]/30 bg-[#7dc890]/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#bce8c5]">
@@ -288,16 +288,16 @@ function PlanSummaryAside({
       <dl className="mt-6 grid gap-3 text-sm">
         {buyNow ? (
           <>
-            <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
-              <dt className="text-white/48">Base Price</dt>
-              <dd className="font-medium text-white/84">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 border-b border-white/8 pb-3">
+              <dt className="shrink-0 text-white/48">Base Price</dt>
+              <dd className="min-w-0 font-medium text-white/84 sm:text-right">
                 {formatCurrency(basePrice)}
                 {period}
               </dd>
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-white/48">Additional Users</dt>
-              <dd className="font-medium text-white/84">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <dt className="shrink-0 text-white/48">Additional Users</dt>
+              <dd className="min-w-0 font-medium text-white/84 sm:text-right">
                 +{formatCurrency(perUser)}
                 {period} per user
               </dd>
@@ -305,20 +305,20 @@ function PlanSummaryAside({
           </>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
-              <dt className="text-white/48">Trial ends</dt>
-              <dd className="font-medium text-white/84">{trialEndsLabel()}</dd>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 border-b border-white/8 pb-3">
+              <dt className="shrink-0 text-white/48">Trial ends</dt>
+              <dd className="min-w-0 font-medium text-white/84 sm:text-right">{trialEndsLabel()}</dd>
             </div>
-            <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
-              <dt className="text-white/48">Then (Base)</dt>
-              <dd className="font-medium text-white/84">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 border-b border-white/8 pb-3">
+              <dt className="shrink-0 text-white/48">Then (Base)</dt>
+              <dd className="min-w-0 font-medium text-white/84 sm:text-right">
                 {formatCurrency(basePrice)}
                 {period}
               </dd>
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-white/48">Additional Users</dt>
-              <dd className="font-medium text-white/84">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <dt className="shrink-0 text-white/48">Additional Users</dt>
+              <dd className="min-w-0 font-medium text-white/84 sm:text-right">
                 +{formatCurrency(perUser)}
                 {period} per user
               </dd>
@@ -473,7 +473,7 @@ function AuthFormContent() {
   }
 
   return (
-    <div>
+    <div className={cn(!showPlan && "mx-auto w-full max-w-xl")}>
       <div className="mb-6">
         <BackButton />
       </div>
@@ -514,7 +514,7 @@ function AuthFormContent() {
         </div>
       </div>
 
-      <div className={cn("grid gap-8", showPlan ? "lg:grid-cols-[1.15fr_0.85fr] lg:items-start" : "max-w-xl")}>
+      <div className={cn("grid gap-8", showPlan && "lg:grid-cols-[1.15fr_0.85fr] lg:items-start")}>
         {mode === "signup" ? (
           <SignUpMultiStep
             plan={plan}
