@@ -24,6 +24,11 @@ export function CheckoutSuccessClient({ crmLoginUrl }: { crmLoginUrl: string }) 
       ?.name ?? billing?.plan;
 
   useEffect(() => {
+    const verified = readVerifiedBilling();
+    if (verified?.gstin || verified?.legalName) {
+      setBilling(verified);
+      return;
+    }
     if (!isAuthenticated) {
       router.replace(ROUTES.signIn);
       return;
@@ -33,28 +38,21 @@ export function CheckoutSuccessClient({ crmLoginUrl }: { crmLoginUrl: string }) 
       router.replace(ROUTES.billingConfirmation);
       return;
     }
-    const verified = readVerifiedBilling();
-    if (verified?.gstin) {
-      queueMicrotask(() => setBilling(verified));
-      return;
-    }
     if (activePlan && subscribed) {
-      queueMicrotask(() =>
-        setBilling({
-          gstin: "",
-          legalName: "Your organization",
-          pan: "",
-          stateCode: "",
-          stateName: "",
-          address: "",
-          postalCode: "",
-          country: "India",
-          plan: activePlan,
-          users: 0,
-          cycle: "annual",
-          verifiedAt: Date.now(),
-        }),
-      );
+      setBilling({
+        gstin: "",
+        legalName: "Your organization",
+        pan: "",
+        stateCode: "",
+        stateName: "",
+        address: "",
+        postalCode: "",
+        country: "India",
+        plan: activePlan,
+        users: 0,
+        cycle: "annual",
+        verifiedAt: Date.now(),
+      });
       return;
     }
     router.replace(ROUTES.pricing);

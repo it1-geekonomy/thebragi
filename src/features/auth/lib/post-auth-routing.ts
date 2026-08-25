@@ -29,9 +29,12 @@ type SessionApiResponse = {
   organizationId?: string;
   organizationStatus?: string;
   activePlan?: string;
+  plan?: string;
+  planSlug?: string;
   subscriptionStatus?: string;
-  subscription?: { status?: string; planSlug?: string };
-  user?: { createdAt?: string; name?: string; email?: string; organizationStatus?: string };
+  status?: string;
+  subscription?: { status?: string; planSlug?: string; plan?: string };
+  user?: { createdAt?: string; name?: string; email?: string; organizationStatus?: string; organizationId?: string };
   role?: string;
 };
 
@@ -47,10 +50,10 @@ const EMPTY_SESSION: AuthSessionDetails = {
   ok: false,
 };
 
-function normalizeSubscriptionStatus(value?: string | null): SubscriptionStatus {
+export function normalizeSubscriptionStatus(value?: string | null): SubscriptionStatus {
   const status = value?.toLowerCase();
   if (status === "trialing" || status === "trial") return "trialing";
-  if (status === "active" || status === "subscribed") return "active";
+  if (status === "active" || status === "subscribed" || status === "completed") return "active";
   // Ended subscriptions only — org register uses "inactive", which must stay "none"
   if (status === "cancelled" || status === "canceled" || status === "past_due" || status === "expired") {
     return "expired";
@@ -101,26 +104,35 @@ export async function fetchAuthSessionDetails(token: string): Promise<AuthSessio
     const rawStatus =
       data.subscriptionStatus ??
       data.subscription?.status ??
+      data.status ??
       data.organizationStatus ??
       data.user?.organizationStatus;
     let subscriptionStatus = normalizeSubscriptionStatus(rawStatus);
-    let activePlan = data.activePlan ?? data.subscription?.planSlug ?? null;
+    let activePlan =
+      data.activePlan ??
+      data.plan ??
+      data.planSlug ??
+      data.subscription?.planSlug ??
+      data.subscription?.plan ??
+      null;
+    const organizationId = data.organizationId ?? data.user?.organizationId ?? null;
     let trialStartedAt: string | null = null;
     let trialEndsAt: string | null = null;
 
-    if (data.organizationId) {
+    if (organizationId) {
       try {
-        const subResponse = await fetch(`${getApiUrl()}/subscription/status/${data.organizationId}`, {
+        const subResponse = await fetch(`${getApiUrl()}/subscription/status/${organizationId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (subResponse.ok) {
           const subData = (await subResponse.json()) as {
             plan?: string;
+            planSlug?: string;
             status?: string;
             startDate?: string;
             endDate?: string;
           };
-          if (subData.plan) activePlan = subData.plan.toLowerCase();
+          if (subData.plan || subData.planSlug) activePlan = (subData.planSlug || subData.plan)!.toLowerCase();
           if (subData.status) subscriptionStatus = normalizeSubscriptionStatus(subData.status);
           trialStartedAt = subData.startDate ?? null;
           trialEndsAt = subData.endDate ?? null;
@@ -133,7 +145,7 @@ export async function fetchAuthSessionDetails(token: string): Promise<AuthSessio
     return {
       subscriptionStatus,
       activePlan,
-      organizationId: data.organizationId ?? null,
+      organizationId,
       userName: data.user?.name ?? null,
       userEmail: data.user?.email ?? null,
       role: data.role ?? null,

@@ -185,7 +185,7 @@ export function SignUpMultiStep({
 
               const loginData = await apiClient<AuthResponse>("/auth/login", {
                 method: "POST",
-                body: JSON.stringify({ email: values.email, password: values.password }),
+                body: JSON.stringify({ email: values.email, password: values.password, appType: "website" }),
               });
 
               await initAuthSession(dispatch, loginData, values.email, true);

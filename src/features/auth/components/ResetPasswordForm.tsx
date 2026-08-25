@@ -76,6 +76,7 @@ export function ResetPasswordForm() {
                   email: values.email,
                   token,
                   newPassword: values.password,
+                  password: values.password,
                   appType: "website",
                 }),
               });

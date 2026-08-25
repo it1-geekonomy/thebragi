@@ -14,10 +14,17 @@ export function AuthRedirector() {
   );
 
   useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const token = searchParams.get("token");
+    if (token) {
+      router.replace(`/reset-password?${searchParams.toString()}`);
+      return;
+    }
+
     // Wait until session hydration finishes — null means still loading.
     if (!isAuthenticated || subscriptionStatus === null) return;
 
-    const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+    const returnTo = searchParams.get("returnTo");
     const draft = readSignupDraft();
 
     if (scope === "checkout" && subscriptionStatus === "none") {
