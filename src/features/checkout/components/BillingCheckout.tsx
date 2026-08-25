@@ -572,39 +572,45 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           }
 
           if (signupDraft) {
-            if (
-              (signupDraft.authProvider === "google" ||
-                signupDraft.authProvider === "microsoft") &&
-              signupDraft.idToken
-            ) {
-              const loginData = await apiClient<{ accessToken: string }>("/auth/oauth", {
-                method: "POST",
-                body: JSON.stringify({
-                  authProvider: signupDraft.authProvider,
-                  idToken: signupDraft.idToken,
-                }),
-              });
-              localStorage.setItem(
-                "accessToken",
-                (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
-              );
-            } else if (signupDraft.password) {
-              const loginData = await apiClient<{ accessToken: string; user?: { name?: string } }>(
-                "/auth/login",
-                {
+            try {
+              if (
+                (signupDraft.authProvider === "google" ||
+                  signupDraft.authProvider === "microsoft") &&
+                signupDraft.idToken
+              ) {
+                const loginData = await apiClient<{ accessToken: string }>("/auth/oauth", {
                   method: "POST",
                   body: JSON.stringify({
-                    email: signupDraft.email,
-                    password: signupDraft.password,
+                    authProvider: signupDraft.authProvider,
+                    idToken: signupDraft.idToken,
                   }),
-                },
-              );
-              localStorage.setItem(
-                "accessToken",
-                (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
-              );
+                });
+                localStorage.setItem(
+                  "accessToken",
+                  (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
+                );
+              } else if (signupDraft.password) {
+                const loginData = await apiClient<{ accessToken: string; user?: { name?: string } }>(
+                  "/auth/login",
+                  {
+                    method: "POST",
+                    body: JSON.stringify({
+                      email: signupDraft.email,
+                      password: signupDraft.password,
+                    }),
+                  },
+                );
+                localStorage.setItem(
+                  "accessToken",
+                  (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
+                );
+              }
+            } catch (authError) {
+              console.warn("Auto-login following payment verification failed:", authError);
+              toast.info("Payment successful! Please sign in to access your account.");
+            } finally {
+              clearSignupDraft();
             }
-            clearSignupDraft();
           }
 
           if (paidOrganizationId && localStorage.getItem("accessToken")) {
@@ -619,8 +625,8 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           const details = token ? await fetchAuthSessionDetails(token).catch(() => null) : null;
           dispatch(
             setMockSession({
-              isAuthenticated: true,
-              scope: "full",
+              isAuthenticated: Boolean(token),
+              scope: token ? "full" : "anonymous",
               isNewSignup: Boolean(signupDraft),
               userEmail: signupDraft?.email ?? details?.userEmail ?? userEmail,
               userName: signupDraft?.fullName ?? details?.userName ?? userName,
