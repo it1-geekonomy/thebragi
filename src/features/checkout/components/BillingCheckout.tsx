@@ -346,18 +346,27 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 billingCycle: cycle,
                 billing,
               })
-            : signupDraft?.resume
+            : signupDraft?.resume &&
+                signupDraft.authProvider !== "google" &&
+                signupDraft.authProvider !== "microsoft"
               ? await paymentApi.resumeTrialAuth({
                   email: signupDraft.email,
                   password: signupDraft.password,
                 })
               : signupDraft
                 ? await paymentApi.createTrialAuth({
-                    name: signupDraft.company,
+                    name: billing.legalName.trim() || signupDraft.company,
                     superAdminEmail: signupDraft.email,
                     superAdminName: signupDraft.fullName,
-                    industry: signupDraft.industry,
-                    adminPassword: signupDraft.password,
+                    industry: signupDraft.industry || undefined,
+                    ...(signupDraft.authProvider === "google" ||
+                    signupDraft.authProvider === "microsoft"
+                      ? {
+                          authProvider: signupDraft.authProvider,
+                          providerUserId: signupDraft.providerUserId,
+                          emailVerified: signupDraft.emailVerified ?? true,
+                        }
+                      : { adminPassword: signupDraft.password }),
                     phone: signupDraft.phone,
                     city: finalCity,
                     planId: plan.id,
@@ -387,11 +396,18 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 ? { organizationId }
                 : signupDraft
                   ? {
-                      name: signupDraft.company,
+                      name: billing.legalName.trim() || signupDraft.company,
                       superAdminEmail: signupDraft.email,
                       superAdminName: signupDraft.fullName,
-                      industry: signupDraft.industry,
-                      adminPassword: signupDraft.password,
+                      industry: signupDraft.industry || undefined,
+                      ...(signupDraft.authProvider === "google" ||
+                      signupDraft.authProvider === "microsoft"
+                        ? {
+                            authProvider: signupDraft.authProvider,
+                            providerUserId: signupDraft.providerUserId,
+                            emailVerified: signupDraft.emailVerified ?? true,
+                          }
+                        : { adminPassword: signupDraft.password }),
                       phone: signupDraft.phone,
                       city: finalCity,
                     }
@@ -473,11 +489,38 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           }
 
           if (signupDraft) {
-            const loginData = await apiClient<{ accessToken: string; user?: { name?: string } }>("/auth/login", {
-              method: "POST",
-              body: JSON.stringify({ email: signupDraft.email, password: signupDraft.password }),
-            });
-            localStorage.setItem("accessToken", (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""));
+            if (
+              (signupDraft.authProvider === "google" ||
+                signupDraft.authProvider === "microsoft") &&
+              signupDraft.idToken
+            ) {
+              const loginData = await apiClient<{ accessToken: string }>("/auth/oauth", {
+                method: "POST",
+                body: JSON.stringify({
+                  authProvider: signupDraft.authProvider,
+                  idToken: signupDraft.idToken,
+                }),
+              });
+              localStorage.setItem(
+                "accessToken",
+                (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
+              );
+            } else if (signupDraft.password) {
+              const loginData = await apiClient<{ accessToken: string; user?: { name?: string } }>(
+                "/auth/login",
+                {
+                  method: "POST",
+                  body: JSON.stringify({
+                    email: signupDraft.email,
+                    password: signupDraft.password,
+                  }),
+                },
+              );
+              localStorage.setItem(
+                "accessToken",
+                (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
+              );
+            }
             clearSignupDraft();
           }
 

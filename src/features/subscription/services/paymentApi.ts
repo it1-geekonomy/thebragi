@@ -17,16 +17,19 @@ export const paymentApi = {
     superAdminEmail: string;
     superAdminName: string;
     industry?: string;
-    adminPassword: string;
-    planId: string;
-    phone: string;
+    adminPassword?: string;
+    planId?: string;
+    phone?: string;
     billingCycle?: "monthly" | "annual";
+    authProvider?: "local" | "google" | "microsoft";
+    providerUserId?: string;
+    emailVerified?: boolean;
   }) => {
     return apiClient<{
       pendingTrialId: string;
       code?: string;
-      planId?: string;
-      planName?: string;
+      planId?: string | null;
+      planName?: string | null;
     }>("/razorpay/capture-signup", {
       method: "POST",
       body: JSON.stringify(data),
@@ -45,6 +48,9 @@ export const paymentApi = {
     planId: string;
     users?: number;
     billingCycle?: "monthly" | "annual";
+    authProvider?: "local" | "google" | "microsoft";
+    providerUserId?: string;
+    emailVerified?: boolean;
     billing?: {
       legalName: string;
       gstin: string;
