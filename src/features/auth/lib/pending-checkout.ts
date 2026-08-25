@@ -8,12 +8,13 @@ export type PendingSignupProfile = {
   email: string;
   company: string;
   industry: string | null;
-  planId: string;
+  planId: string | null;
   planName: string | null;
   status: string;
 };
 
-export function planSlugFromPending(plans: DynamicPlan[], planId: string) {
+export function planSlugFromPending(plans: DynamicPlan[], planId: string | null) {
+  if (!planId) return null;
   return plans.find((plan) => plan.id === planId)?.slug ?? null;
 }
 

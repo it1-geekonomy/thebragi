@@ -12,7 +12,7 @@ import { AuthRedirector } from "@/features/auth/components/AuthRedirector";
 
 export const metadata: Metadata = {
   title: "Sign in",
-  description: "Sign in to Bragi or create an account to start a 14-day free trial.",
+  description: "Sign in to Bragi or create an account to start a 14-day free trial (limit 5 users).",
 };
 
 export default function SignInPage() {

@@ -42,6 +42,7 @@ export type SignupDraft = {
   email: string;
   company: string;
   industry: string;
+  /** Empty for Google/Microsoft signups */
   password: string;
   phone?: string;
   city?: string;
@@ -51,6 +52,11 @@ export type SignupDraft = {
   planSlug?: string;
   purchaseMode?: PurchaseMode;
   cycle?: BillingCycle;
+  authProvider?: "local" | "google" | "microsoft";
+  providerUserId?: string;
+  emailVerified?: boolean;
+  /** Kept briefly so checkout can re-auth after payment */
+  idToken?: string;
 };
 
 const SIGNUP_KEY = "bragi_signup_draft";
@@ -65,7 +71,10 @@ export function readSignupDraft(): SignupDraft | null {
     const raw = localStorage.getItem(SIGNUP_KEY) ?? sessionStorage.getItem(SIGNUP_KEY);
     if (!raw) return null;
     const draft = JSON.parse(raw) as SignupDraft;
-    if (!draft.email || !draft.password) return null;
+    if (!draft.email) return null;
+    const isOAuth =
+      draft.authProvider === "google" || draft.authProvider === "microsoft";
+    if (!isOAuth && !draft.password) return null;
     if (!draft.resume && (!draft.company || !draft.fullName)) return null;
     return draft;
   } catch {

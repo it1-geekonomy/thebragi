@@ -25,7 +25,7 @@ type ProfileView = {
 };
 
 export function ProfilePageClient() {
-  const { session } = useAppSelector((state) => state);
+  const session = useAppSelector((state) => state.session);
   const router = useRouter();
   const [profile, setProfile] = useState<ProfileView | null>(null);
 

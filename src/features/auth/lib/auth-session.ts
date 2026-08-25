@@ -4,8 +4,21 @@ import { fetchAuthSessionDetails } from "@/features/auth/lib/post-auth-routing";
 import { saveSignupDraft, type SignupDraft } from "@/features/checkout/lib/billing-session";
 
 type SessionUser = {
+  id?: string;
   name?: string;
+  email?: string;
+  company?: string;
+  role?: string;
   organizationId?: string | null;
+};
+
+export type OrganizationSummary = {
+  id: string;
+  name?: string;
+  companyName?: string;
+  role?: string;
+  status?: string;
+  isCurrent?: boolean;
 };
 
 export type AuthResponse = {
@@ -13,17 +26,55 @@ export type AuthResponse = {
   code?: string;
   message?: string;
   pendingTrialId?: string;
-  user?: SessionUser & { email?: string; company?: string };
+  user?: SessionUser;
   requires_org_selection?: boolean;
   session_key?: string;
-  orgs?: { id: string }[];
+  orgs?: OrganizationSummary[];
+  authProvider?: "local" | "google" | "microsoft";
+  providerUserId?: string;
+  email?: string;
+  name?: string;
 };
 
 export type SessionDetails = {
   subscriptionStatus: SubscriptionStatus;
   activePlan?: string;
   organizationId?: string | null;
+  requiresOrgSelection?: boolean;
 };
+
+export const ORG_SELECTION_SESSION_KEY = "bragi_org_selection_session";
+
+export type OrgSelectionSessionData = {
+  sessionKey: string;
+  orgs: OrganizationSummary[];
+  email: string;
+};
+
+export function saveOrgSelectionSession(sessionKey: string, orgs: OrganizationSummary[], email: string) {
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem(
+      ORG_SELECTION_SESSION_KEY,
+      JSON.stringify({ sessionKey, orgs, email }),
+    );
+  }
+}
+
+export function readOrgSelectionSession(): OrgSelectionSessionData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(ORG_SELECTION_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearOrgSelectionSession() {
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem(ORG_SELECTION_SESSION_KEY);
+  }
+}
 
 export function applyPendingSession(dispatch: AppDispatch, draft: SignupDraft) {
   saveSignupDraft(draft);
@@ -41,39 +92,33 @@ export function applyPendingSession(dispatch: AppDispatch, draft: SignupDraft) {
   );
 }
 
-export async function applyAuthSession(dispatch: AppDispatch, data: AuthResponse, email: string) {
-  const rawToken = (data.accessToken ?? "").replace(/^Bearer\s+/i, "");
-  localStorage.setItem("accessToken", rawToken);
+export async function applyAuthSession(
+  dispatch: AppDispatch,
+  data: AuthResponse,
+  email: string,
+): Promise<{ requiresOrgSelection: boolean }> {
+  if (data.requires_org_selection && data.session_key) {
+    saveOrgSelectionSession(data.session_key, data.orgs ?? [], email);
+    return { requiresOrgSelection: true };
+  }
 
-  if (data.requires_org_selection) {
-    const orgs = data.orgs ?? [];
-    const selected = await apiClient<{ accessToken: string; user: SessionUser }>("/auth/select-organization", {
-      method: "POST",
-      body: JSON.stringify({ sessionKey: data.session_key, organizationId: orgs[0]?.id }),
-    });
-    const selectedToken = (selected.accessToken ?? "").replace(/^Bearer\s+/i, "");
-    localStorage.setItem("accessToken", selectedToken);
-    dispatch(
-      setMockSession({
-        isAuthenticated: true,
-        userEmail: email,
-        userName: selected.user?.name ?? email.split("@")[0],
-        scope: "full",
-        organizationId: selected.user?.organizationId ?? orgs[0]?.id,
-      }),
-    );
-    return;
+  const rawToken = (data.accessToken ?? "").replace(/^Bearer\s+/i, "");
+  if (rawToken) {
+    localStorage.setItem("accessToken", rawToken);
   }
 
   dispatch(
     setMockSession({
       isAuthenticated: true,
-      userEmail: email,
+      userEmail: email || data.user?.email || null,
       userName: data.user?.name ?? email.split("@")[0],
       scope: "full",
       organizationId: data.user?.organizationId ?? null,
+      role: data.user?.role ?? null,
     }),
   );
+
+  return { requiresOrgSelection: false };
 }
 
 export async function initAuthSession(
@@ -82,7 +127,16 @@ export async function initAuthSession(
   email: string,
   isNewSignup = false,
 ): Promise<SessionDetails> {
-  await applyAuthSession(dispatch, data, email);
+  const result = await applyAuthSession(dispatch, data, email);
+
+  if (result.requiresOrgSelection) {
+    return {
+      subscriptionStatus: "none",
+      activePlan: undefined,
+      organizationId: null,
+      requiresOrgSelection: true,
+    };
+  }
 
   const token = localStorage.getItem("accessToken") ?? "";
   const sessionDetails = await fetchAuthSessionDetails(token);
@@ -93,6 +147,9 @@ export async function initAuthSession(
       subscriptionStatus: sessionDetails.subscriptionStatus,
       activePlan: sessionDetails.activePlan,
       organizationId: sessionDetails.organizationId,
+      userName: sessionDetails.userName || data.user?.name || email.split("@")[0],
+      userEmail: sessionDetails.userEmail || email,
+      role: sessionDetails.role || data.user?.role || null,
       trialStartedAt: sessionDetails.trialStartedAt,
       trialEndsAt: sessionDetails.trialEndsAt,
     }),
@@ -102,5 +159,49 @@ export async function initAuthSession(
     subscriptionStatus: sessionDetails.subscriptionStatus,
     activePlan: sessionDetails.activePlan ?? undefined,
     organizationId: sessionDetails.organizationId,
+    requiresOrgSelection: false,
+  };
+}
+
+export async function submitOrganizationSelection(
+  dispatch: AppDispatch,
+  sessionKey: string,
+  organizationId: string,
+  email?: string,
+): Promise<SessionDetails> {
+  const response = await apiClient<{ accessToken: string; user?: SessionUser }>("/auth/select-organization", {
+    method: "POST",
+    body: JSON.stringify({ sessionKey, organizationId }),
+  });
+
+  const selectedToken = (response.accessToken ?? "").replace(/^Bearer\s+/i, "");
+  if (selectedToken) {
+    localStorage.setItem("accessToken", selectedToken);
+  }
+
+  clearOrgSelectionSession();
+
+  const sessionDetails = await fetchAuthSessionDetails(selectedToken);
+
+  dispatch(
+    setMockSession({
+      isAuthenticated: true,
+      scope: "full",
+      userEmail: email || sessionDetails.userEmail || response.user?.email || null,
+      userName: sessionDetails.userName || response.user?.name || (email ? email.split("@")[0] : "User"),
+      role: sessionDetails.role || response.user?.role || null,
+      organizationId: sessionDetails.organizationId || organizationId,
+      subscriptionStatus: sessionDetails.subscriptionStatus,
+      activePlan: sessionDetails.activePlan,
+      trialStartedAt: sessionDetails.trialStartedAt,
+      trialEndsAt: sessionDetails.trialEndsAt,
+    }),
+  );
+
+  return {
+    subscriptionStatus: sessionDetails.subscriptionStatus,
+    activePlan: sessionDetails.activePlan ?? undefined,
+    organizationId: sessionDetails.organizationId || organizationId,
+    requiresOrgSelection: false,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -10,7 +10,12 @@ import { toast } from "sonner";
 import { ROUTES } from "@/config/routes";
 import { useAppDispatch } from "@/store/hooks";
 import { apiClient, getApiErrorMessage } from "@/shared/lib/api-client";
-import { initAuthSession, applyPendingSession, type AuthResponse } from "@/features/auth/lib/auth-session";
+import {
+  initAuthSession,
+  applyAuthSession,
+  applyPendingSession,
+  type AuthResponse,
+} from "@/features/auth/lib/auth-session";
 import { brand } from "@/config/brand";
 import { TRIAL_AUTHORIZATION_PAISE, TRIAL_AUTHORIZATION_RUPEES } from "@/features/checkout/lib/order-math";
 import { clearSignupDraft } from "@/features/checkout/lib/billing-session";
@@ -22,6 +27,15 @@ import { Select } from "@/shared/components/ui/Select";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { type DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
 import type { BillingCycle, PurchaseMode } from "@/features/checkout/lib/checkout-params";
+import { OAuthButtons } from "./OAuthButtons";
+import {
+  clearOAuthIdentityDraft,
+  readOAuthIdentityDraft,
+  saveOAuthIdentityDraft,
+  type OAuthIdentityDraft,
+} from "@/features/auth/lib/oauth";
+import { completeOAuthSignup } from "@/features/auth/lib/complete-oauth-signup";
+import { getPostAuthDestination } from "@/features/auth/lib/post-auth-routing";
 
 const INDUSTRIES = [
   "Technology",
@@ -38,7 +52,11 @@ const accountSchema = yup.object({
   email: yup.string().email("Enter a valid Email.").required("Email is required."),
   company: yup.string().trim().required("Company name is required."),
   industry: yup.string().required("Select an industry."),
-  phone: yup.string().trim().matches(/^\+?[0-9\s\-()]{10,15}$/, "Enter a valid phone number").required("Phone number is required."),
+  phone: yup
+    .string()
+    .trim()
+    .matches(/^\+?[0-9\s\-()]{10,15}$/, "Enter a valid phone number")
+    .required("Phone number is required."),
   password: yup.string().min(8, "Use at least 8 characters.").required("Password is required."),
 });
 
@@ -64,6 +82,39 @@ export function SignUpMultiStep({
   const hasPlan = Boolean(plan);
   const resumingCheckout = returnTo.startsWith("/checkout");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [oauthIdentity, setOauthIdentity] = useState<OAuthIdentityDraft | null>(null);
+  const [oauthFinishing, setOauthFinishing] = useState(false);
+
+  useEffect(() => {
+    setOauthIdentity(readOAuthIdentityDraft());
+  }, []);
+
+  useEffect(() => {
+    if (!oauthIdentity || oauthFinishing) return;
+
+    (async () => {
+      setOauthFinishing(true);
+      try {
+        const next = await completeOAuthSignup({
+          dispatch,
+          oauth: oauthIdentity,
+          plan,
+          returnTo,
+          purchaseMode,
+          cycle,
+        });
+        toast.success(
+          plan ? "Account ready. Continue to billing." : "Account ready. Choose a plan to continue.",
+        );
+        router.push(next);
+      } catch (err: unknown) {
+        clearOAuthIdentityDraft();
+        setOauthIdentity(null);
+        setOauthFinishing(false);
+        toast.error(getApiErrorMessage(err, "Could not continue with social signup."));
+      }
+    })();
+  }, [oauthIdentity, oauthFinishing, plan, dispatch, returnTo, router, purchaseMode, cycle]);
 
   const accountForm = useForm<AccountValues>({
     resolver: yupResolver(accountSchema),
@@ -75,19 +126,20 @@ export function SignUpMultiStep({
     let shouldReset = true;
     try {
       if (plan) {
-        let trialAuth: any = null;
+        let trialAuth: Awaited<ReturnType<typeof paymentApi.resumeTrialAuth>> | null = null;
         let isResuming = false;
-        
+
         try {
-          // Check if there is an existing pending signup to resume
           trialAuth = await paymentApi.resumeTrialAuth({
             email: values.email,
             password: values.password,
           });
           isResuming = true;
-        } catch (err: any) {
-          if (err?.status === 404 || err?.message?.includes("404")) {
-            // expected: no pending signup, continue normal flow
+        } catch (err: unknown) {
+          const status = err && typeof err === "object" && "status" in err ? Number(err.status) : 0;
+          const message = err instanceof Error ? err.message : "";
+          if (status === 404 || message.includes("404")) {
+            // expected: no pending signup
           } else {
             throw err;
           }
@@ -143,12 +195,11 @@ export function SignUpMultiStep({
               toast.error(error?.message || "Payment cancelled.");
               setIsProcessing(false);
               router.push(ROUTES.pricing);
-            }
+            },
           );
           return;
         }
 
-        // Normal new signup: capture-signup -> save draft -> checkout
         const captured = await paymentApi.captureSignup({
           name: values.company,
           superAdminEmail: values.email,
@@ -158,6 +209,7 @@ export function SignUpMultiStep({
           planId: plan.id,
           phone: values.phone,
           billingCycle: cycle,
+          authProvider: "local",
         });
 
         applyPendingSession(dispatch, {
@@ -172,6 +224,7 @@ export function SignUpMultiStep({
           planSlug: plan.slug,
           purchaseMode,
           cycle,
+          authProvider: "local",
         });
 
         toast.success("Account created. Continue to billing to buy your plan.");
@@ -180,7 +233,16 @@ export function SignUpMultiStep({
           : ROUTES.checkout(plan.slug, { cycle, mode: purchaseMode });
         router.push(checkoutPath);
       } else {
-        // Path 2: no plan — save draft locally, org created at checkout
+        await paymentApi.captureSignup({
+          name: values.company,
+          superAdminEmail: values.email,
+          superAdminName: values.fullName,
+          industry: values.industry,
+          adminPassword: values.password,
+          phone: values.phone,
+          authProvider: "local",
+        });
+
         applyPendingSession(dispatch, {
           fullName: values.fullName,
           email: values.email,
@@ -188,6 +250,7 @@ export function SignUpMultiStep({
           industry: values.industry,
           password: values.password,
           phone: values.phone,
+          authProvider: "local",
         });
         toast.success("Account created. Now choose a plan.");
         router.push(ROUTES.pricing);
@@ -197,6 +260,118 @@ export function SignUpMultiStep({
       if (!shouldReset) setIsProcessing(false);
     } finally {
       if (shouldReset) setIsProcessing(false);
+    }
+  };
+
+  if (oauthIdentity || oauthFinishing) {
+    return (
+      <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6 sm:p-8">
+        <BragiLogo />
+        <h1 className="mt-6 text-3xl font-semibold text-white sm:text-4xl">Create your account</h1>
+        <p className="mt-6 rounded-md border border-[#7dc890]/25 bg-[#7dc890]/10 px-3 py-2 text-sm text-[#bce8c5]">
+          Continuing with {oauthIdentity?.authProvider === "microsoft" ? "Microsoft" : "Google"}
+          {oauthIdentity?.email ? (
+            <>
+              {" "}
+              as <span className="font-semibold">{oauthIdentity.email}</span>
+            </>
+          ) : null}
+        </p>
+        <div className="mt-8 flex flex-col items-center gap-3 py-6">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#7dc890] border-t-transparent" />
+          <p className="text-sm text-white/58">
+            {plan
+              ? "Saving your account — billing details come next."
+              : "Saving your account — choose a plan next."}
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  const handleOAuthSuccess = async (data: AuthResponse, provider: "google" | "microsoft") => {
+    try {
+      setIsProcessing(true);
+
+      if (data.code === "PAYMENT_PENDING") {
+        const email = data.user?.email || data.email || "";
+        const fullName = data.user?.name || data.name || email.split("@")[0] || "User";
+        applyPendingSession(dispatch, {
+          fullName,
+          email,
+          company: data.user?.company || email,
+          industry: "",
+          password: "",
+          resume: true,
+          authProvider: provider,
+          providerUserId: data.providerUserId,
+          emailVerified: true,
+          pendingTrialId: data.pendingTrialId,
+        });
+        toast.success("Account recognized. Choose a plan to activate your workspace.");
+        router.push(ROUTES.pricing);
+        return;
+      }
+
+      if (data.code === "OAUTH_SIGNUP_REQUIRED") {
+        const email = data.email || data.user?.email || "";
+        const name = data.name || data.user?.name || email.split("@")[0] || "User";
+        const oauth: OAuthIdentityDraft = {
+          authProvider: provider,
+          providerUserId: data.providerUserId || "",
+          email,
+          name,
+          emailVerified: true,
+        };
+        saveOAuthIdentityDraft(oauth);
+
+        const next = await completeOAuthSignup({
+          dispatch,
+          oauth,
+          plan,
+          returnTo,
+          purchaseMode,
+          cycle,
+        });
+        toast.success(
+          plan ? "Account ready. Continue to billing." : "Account ready. Choose a plan to continue.",
+        );
+        router.push(next);
+        return;
+      }
+
+      if (data.requires_org_selection) {
+        const email = data.user?.email || data.email || "";
+        await applyAuthSession(dispatch, data, email);
+        router.push(ROUTES.selectOrganization);
+        return;
+      }
+
+      if (data.accessToken) {
+        clearOAuthIdentityDraft();
+        const email = data.user?.email || data.email || "";
+        const sessionDetails = await initAuthSession(dispatch, data, email, false);
+        if (sessionDetails.requiresOrgSelection) {
+          router.push(ROUTES.selectOrganization);
+          return;
+        }
+        toast.success("Signed in successfully.");
+        router.push(
+          getPostAuthDestination({
+            isNewSignup: false,
+            subscriptionStatus: sessionDetails.subscriptionStatus,
+            activePlan: sessionDetails.activePlan,
+            returnTo,
+          }),
+        );
+        return;
+      }
+
+      toast.error(data.message || "Social sign-in failed.");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Social sign-in failed."));
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -211,7 +386,16 @@ export function SignUpMultiStep({
         </Link>
       </p>
 
-      <form className="mt-8 grid gap-4" onSubmit={accountForm.handleSubmit(onAccountSubmit)}>
+      <div className="mt-6">
+        <OAuthButtons onOAuthSuccess={handleOAuthSuccess} disabled={isProcessing} />
+        <div className="mt-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-white/10" />
+          <span className="text-xs font-semibold uppercase tracking-widest text-white/35">or continue with email</span>
+          <div className="h-px flex-1 bg-white/10" />
+        </div>
+      </div>
+
+      <form className="mt-5 grid gap-4" onSubmit={accountForm.handleSubmit(onAccountSubmit)}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
             id="fullName"

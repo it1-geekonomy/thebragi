@@ -61,13 +61,17 @@ export function PricingTeaserSection() {
                 <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
               </div>
               <p className="mt-3 min-h-12 text-sm leading-6 text-white/58">
-                Includes up to {plan.maxUsers || "unlimited"} users.
+                {plan.isEnterprise ? null : `Includes up to ${plan.maxUsers || "unlimited"} users.`}
               </p>
               <div className="mt-5 flex flex-col gap-2">
-                <p className="text-3xl font-semibold text-white">
-                  {formatCurrency(price)}{" "}
-                  <span className="text-sm text-white/42">{isAnnual ? "/year" : "/month"}</span>
-                </p>
+                {plan.isEnterprise ? (
+                  <p className="text-3xl font-semibold text-white">Custom</p>
+                ) : (
+                  <p className="text-3xl font-semibold text-white">
+                    {formatCurrency(price)}{" "}
+                    <span className="text-sm text-white/42">{isAnnual ? "/year" : "/month"}</span>
+                  </p>
+                )}
                 {plan.setupFee > 0 ? (
                   <span className="inline-flex w-fit items-center rounded-md bg-[#7dc890]/10 px-2.5 py-1 text-xs font-medium text-[#7dc890]">
                     + {formatCurrency(plan.setupFee)} one-time setup fee
@@ -75,7 +79,7 @@ export function PricingTeaserSection() {
                 ) : null}
               </div>
               <p className="mt-2 text-sm text-white/46">
-                + {formatCurrency(perUserCost)}{isAnnual ? "/yr" : "/mo"} for each additional user
+                {plan.isEnterprise ? "Tailored to your specific needs" : `+ ${formatCurrency(perUserCost)}${isAnnual ? "/yr" : "/mo"} for each additional user`}
               </p>
               {isAnnual && discount > 0 ? (
                 <p className="mt-2 text-xs font-semibold text-[#a8dfb3]">Billed annually — save {discount}%.</p>
@@ -87,6 +91,15 @@ export function PricingTeaserSection() {
                 >
                   Current plan
                 </Link>
+              ) : plan.isEnterprise ? (
+                <div className="mt-6 grid gap-2">
+                  <Link
+                    className="inline-flex w-full items-center justify-center rounded-md bg-[#5f9965] px-4 py-3 text-sm font-semibold text-white hover:bg-[#6bad72]"
+                    href={ROUTES.enterprise}
+                  >
+                    Contact us
+                  </Link>
+                </div>
               ) : (
                 <div className="mt-6 grid gap-2">
                   <Link
@@ -97,7 +110,7 @@ export function PricingTeaserSection() {
                         : ROUTES.signUp(plan.slug, { cycle: billingCycle })
                     }
                   >
-                    Start 14-day free trial
+                    Start 14-day free trial (limit 5 users)
                   </Link>
                   <Link
                     className="inline-flex w-full items-center justify-center rounded-md border border-white/20 px-4 py-3 text-sm font-semibold text-white hover:bg-white/8"
