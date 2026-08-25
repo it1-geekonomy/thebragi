@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -13,7 +13,12 @@ import {
   getPostAuthDestination,
   sanitizeReturnTo,
 } from "@/features/auth/lib/post-auth-routing";
-import { applyPendingSession, initAuthSession, type AuthResponse } from "@/features/auth/lib/auth-session";
+import {
+  applyAuthSession,
+  applyPendingSession,
+  initAuthSession,
+  type AuthResponse,
+} from "@/features/auth/lib/auth-session";
 import { apiClient, getApiErrorMessage } from "@/shared/lib/api-client";
 import { brand } from "@/config/brand";
 import { Button } from "@/shared/components/ui/Button";
@@ -22,7 +27,7 @@ import { formatCurrency } from "@/shared/lib/format-currency";
 import { BragiLogo } from "@/shared/components/branding/BragiLogo";
 import { cn } from "@/shared/lib/cn";
 import { SignUpMultiStep } from "./SignUpMultiStep";
-import { SocialLoginButtons } from "./SocialLoginButtons";
+import { OAuthButtons } from "./OAuthButtons";
 import { useSubscriptionPlans, type DynamicPlan } from "@/features/subscription/hooks/useSubscriptionPlans";
 import { paymentApi } from "@/features/subscription/services/paymentApi";
 import { BackButton } from "@/shared/components/ui/BackButton";
@@ -31,7 +36,6 @@ import { TRIAL_AUTHORIZATION_PAISE, TRIAL_AUTHORIZATION_RUPEES } from "@/feature
 import { useRazorpayCheckout, type RazorpaySuccessResponse } from "@/features/subscription/hooks/useRazorpayCheckout";
 import {
   clearOAuthIdentityDraft,
-  consumeOAuthRedirectResult,
   saveOAuthIdentityDraft,
   type OAuthIdentityDraft,
 } from "@/features/auth/lib/oauth";
@@ -44,16 +48,6 @@ const passwordSchema = yup.object({
 
 type PasswordValues = yup.InferType<typeof passwordSchema>;
 type AuthMode = "signin" | "signup";
-
-type OAuthApiResponse = AuthResponse & {
-  code?: string;
-  authProvider?: "google" | "microsoft";
-  providerUserId?: string;
-  email?: string;
-  name?: string;
-  emailVerified?: boolean;
-  message?: string;
-};
 
 function getPurchaseMode(returnTo: string, purchaseMode?: string | null) {
   if (purchaseMode === "trial" || purchaseMode === "buy_now") return purchaseMode;
@@ -155,7 +149,11 @@ function PasswordMode({ returnTo }: { returnTo: string; plans: DynamicPlan[] }) 
                   body: JSON.stringify({ email: values.email, password: values.password }),
                 });
 
-                await initAuthSession(dispatch, loginData, values.email, true);
+                const session = await initAuthSession(dispatch, loginData, values.email, true);
+                if (session.requiresOrgSelection) {
+                  router.push(ROUTES.selectOrganization);
+                  return;
+                }
                 router.push(ROUTES.billingConfirmation);
               },
               (error) => {
@@ -169,6 +167,11 @@ function PasswordMode({ returnTo }: { returnTo: string; plans: DynamicPlan[] }) 
           }
 
           const sessionDetails = await initAuthSession(dispatch, data, values.email, false);
+          if (sessionDetails.requiresOrgSelection) {
+            router.push(ROUTES.selectOrganization);
+            return;
+          }
+
           const destination = getPostAuthDestination({
             isNewSignup: false,
             subscriptionStatus: sessionDetails.subscriptionStatus,
@@ -224,10 +227,12 @@ function SignInPanel({
   returnTo,
   modeHref,
   plans,
+  onOAuthSuccess,
 }: {
   returnTo: string;
   modeHref: (mode: AuthMode) => string;
   plans: DynamicPlan[];
+  onOAuthSuccess: (data: AuthResponse, provider: "google" | "microsoft") => void | Promise<void>;
 }) {
   return (
     <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6 sm:p-8">
@@ -241,11 +246,11 @@ function SignInPanel({
       </p>
 
       <div className="mt-6">
-        <SocialLoginButtons returnTo={returnTo} mode="signin" />
+        <OAuthButtons onOAuthSuccess={onOAuthSuccess} />
 
         <div className="mt-5 flex items-center gap-3">
           <div className="h-px flex-1 bg-white/10" />
-          <span className="text-xs font-semibold uppercase tracking-widest text-white/35">or</span>
+          <span className="text-xs font-semibold uppercase tracking-widest text-white/35">or continue with password</span>
           <div className="h-px flex-1 bg-white/10" />
         </div>
 
@@ -355,114 +360,100 @@ function AuthFormContent() {
   const modeHref = (next: AuthMode) => authHref(next, planSlug, searchParams.get("returnTo"), purchaseMode);
   const showPlan = Boolean(plan);
   const [oauthBusy, setOauthBusy] = useState(false);
-  const oauthHandledRef = useRef(false);
 
-  useEffect(() => {
-    if (oauthHandledRef.current) return;
-
-    let result: ReturnType<typeof consumeOAuthRedirectResult>;
+  const handleOAuthSuccess = async (data: AuthResponse, provider: "google" | "microsoft") => {
     try {
-      result = consumeOAuthRedirectResult();
-    } catch (err) {
-      oauthHandledRef.current = true;
-      toast.error(err instanceof Error ? err.message : "Social sign-in failed.");
-      return;
-    }
+      setOauthBusy(true);
 
-    if (!result) return;
-    oauthHandledRef.current = true;
-    setOauthBusy(true);
-
-    const safeReturnTo = sanitizeReturnTo(result.returnTo) || returnTo;
-    const resolvedPurchaseMode = purchaseMode === "buy_now" ? "buy_now" : "trial";
-
-    (async () => {
-      try {
-        const data = await apiClient<OAuthApiResponse>("/auth/oauth", {
-          method: "POST",
-          body: JSON.stringify({
-            authProvider: result.provider,
-            idToken: result.idToken,
-          }),
+      if (data.code === "PAYMENT_PENDING") {
+        const email = data.user?.email || data.email || "";
+        const fullName = data.user?.name || data.name || email.split("@")[0] || "User";
+        applyPendingSession(dispatch, {
+          fullName,
+          email,
+          company: data.user?.company || email,
+          industry: "",
+          password: "",
+          resume: true,
+          authProvider: provider,
+          providerUserId: data.providerUserId,
+          emailVerified: true,
+          pendingTrialId: data.pendingTrialId,
         });
-
-        if (data.code === "PAYMENT_PENDING") {
-          applyPendingSession(dispatch, {
-            fullName: data.user?.name || data.email?.split("@")[0] || "User",
-            email: data.user?.email || data.email || "",
-            company: data.user?.company || data.user?.email || data.email || "",
-            industry: "",
-            password: "",
-            resume: true,
-            authProvider: result.provider,
-            providerUserId: data.providerUserId,
-            emailVerified: true,
-            idToken: result.idToken,
-            pendingTrialId: data.pendingTrialId,
-          });
-          toast.success("Signed in. Choose a plan to activate your workspace.");
-          router.replace(ROUTES.pricing);
-          return;
-        }
-
-        if (data.code === "OAUTH_SIGNUP_REQUIRED") {
-          const oauth: OAuthIdentityDraft = {
-            authProvider: result.provider,
-            providerUserId: data.providerUserId || "",
-            email: data.email || "",
-            name: data.name || "",
-            emailVerified: data.emailVerified ?? true,
-            idToken: result.idToken,
-          };
-          saveOAuthIdentityDraft(oauth);
-
-          const next = await completeOAuthSignup({
-            dispatch,
-            oauth,
-            plan,
-            returnTo: safeReturnTo,
-            purchaseMode: resolvedPurchaseMode,
-            cycle: billingCycle,
-          });
-          toast.success(
-            plan
-              ? `Signed in with ${result.provider === "microsoft" ? "Microsoft" : "Google"}. Continue to billing.`
-              : `Signed in with ${result.provider === "microsoft" ? "Microsoft" : "Google"}. Choose a plan to continue.`,
-          );
-          router.replace(next);
-          return;
-        }
-
-        if (data.accessToken) {
-          clearOAuthIdentityDraft();
-          const email = data.user?.email || data.email || "";
-          const sessionDetails = await initAuthSession(dispatch, data, email, false);
-          toast.success(
-            sessionDetails.subscriptionStatus === "trialing"
-              ? "Signed in. Your trial is still active."
-              : sessionDetails.subscriptionStatus === "expired"
-                ? "Signed in. Renew your plan to keep using Bragi."
-                : "Signed in successfully.",
-          );
-          router.replace(
-            getPostAuthDestination({
-              isNewSignup: false,
-              subscriptionStatus: sessionDetails.subscriptionStatus,
-              activePlan: sessionDetails.activePlan,
-              returnTo: safeReturnTo,
-            }),
-          );
-          return;
-        }
-
-        toast.error(data.message || "Social sign-in failed.");
-      } catch (err) {
-        toast.error(getApiErrorMessage(err, "Social sign-in failed."));
-      } finally {
-        setOauthBusy(false);
+        toast.success("Account recognized. Choose a plan to activate your workspace.");
+        router.push(ROUTES.pricing);
+        return;
       }
-    })();
-  }, [billingCycle, dispatch, plan, purchaseMode, returnTo, router]);
+
+      if (data.code === "OAUTH_SIGNUP_REQUIRED") {
+        const email = data.email || data.user?.email || "";
+        const name = data.name || data.user?.name || email.split("@")[0] || "User";
+        const oauth: OAuthIdentityDraft = {
+          authProvider: provider,
+          providerUserId: data.providerUserId || "",
+          email,
+          name,
+          emailVerified: true,
+        };
+        saveOAuthIdentityDraft(oauth);
+
+        const next = await completeOAuthSignup({
+          dispatch,
+          oauth,
+          plan,
+          returnTo,
+          purchaseMode: buyNow ? "buy_now" : "trial",
+          cycle: billingCycle,
+        });
+        toast.success(
+          plan
+            ? `Signed in with ${provider === "microsoft" ? "Microsoft" : "Google"}. Continue to billing.`
+            : `Signed in with ${provider === "microsoft" ? "Microsoft" : "Google"}. Choose a plan to continue.`,
+        );
+        router.push(next);
+        return;
+      }
+
+      if (data.requires_org_selection) {
+        const email = data.user?.email || data.email || "";
+        await applyAuthSession(dispatch, data, email);
+        router.push(ROUTES.selectOrganization);
+        return;
+      }
+
+      if (data.accessToken) {
+        clearOAuthIdentityDraft();
+        const email = data.user?.email || data.email || "";
+        const sessionDetails = await initAuthSession(dispatch, data, email, false);
+        if (sessionDetails.requiresOrgSelection) {
+          router.push(ROUTES.selectOrganization);
+          return;
+        }
+        toast.success(
+          sessionDetails.subscriptionStatus === "trialing"
+            ? "Signed in. Your trial is still active."
+            : sessionDetails.subscriptionStatus === "expired"
+              ? "Signed in. Renew your plan to keep using Bragi."
+              : "Signed in successfully.",
+        );
+        router.push(
+          getPostAuthDestination({
+            isNewSignup: false,
+            subscriptionStatus: sessionDetails.subscriptionStatus,
+            activePlan: sessionDetails.activePlan,
+            returnTo,
+          }),
+        );
+        return;
+      }
+
+      toast.error(data.message || "Social sign-in failed.");
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Social sign-in failed."));
+    } finally {
+      setOauthBusy(false);
+    }
+  };
 
   if (oauthBusy || loading) {
     return (
@@ -524,7 +515,7 @@ function AuthFormContent() {
             cycle={billingCycle}
           />
         ) : (
-          <SignInPanel returnTo={returnTo} modeHref={modeHref} plans={plans} />
+          <SignInPanel returnTo={returnTo} modeHref={modeHref} plans={plans} onOAuthSuccess={handleOAuthSuccess} />
         )}
         {showPlan ? <PlanSummaryAside plan={plan} buyNow={buyNow} billingCycle={billingCycle} /> : null}
       </div>
