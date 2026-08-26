@@ -24,6 +24,7 @@ export type AuthSessionDetails = {
   trialStartedAt: string | null;
   trialEndsAt: string | null;
   ok: boolean;
+  status?: number;
 };
 
 type SessionApiResponse = {
@@ -54,6 +55,7 @@ const EMPTY_SESSION: AuthSessionDetails = {
   trialStartedAt: null,
   trialEndsAt: null,
   ok: false,
+  status: 0,
 };
 
 export function normalizeSubscriptionStatus(value?: string | null): SubscriptionStatus {
@@ -103,7 +105,7 @@ export async function fetchAuthSessionDetails(token: string): Promise<AuthSessio
     const response = await fetch(`${getApiUrl()}/auth/session`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!response.ok) return EMPTY_SESSION;
+    if (!response.ok) return { ...EMPTY_SESSION, status: response.status };
 
     const data = (await response.json()) as SessionApiResponse;
     // Prefer subscription fields — organizationStatus is "inactive" for brand-new orgs
@@ -169,8 +171,9 @@ export async function fetchAuthSessionDetails(token: string): Promise<AuthSessio
       trialStartedAt,
       trialEndsAt,
       ok: true,
+      status: 200,
     };
   } catch {
-    return EMPTY_SESSION;
+    return { ...EMPTY_SESSION, status: 0 };
   }
 }

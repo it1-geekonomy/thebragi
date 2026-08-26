@@ -5,13 +5,16 @@ export type ApiError = {
 };
 
 export function getApiUrl() {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
       return `http://${host}:8080`;
     }
   }
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+  return "http://localhost:8080";
 }
 
 function isNetworkFailure(error: unknown) {

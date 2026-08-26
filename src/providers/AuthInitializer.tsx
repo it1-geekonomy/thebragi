@@ -22,7 +22,10 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
       try {
         const details = await fetchAuthSessionDetails(token);
         if (!details.ok) {
-          localStorage.removeItem("accessToken");
+          // RFC 6750: Only evict credentials on confirmed 401 Unauthorized
+          if (details.status === 401) {
+            localStorage.removeItem("accessToken");
+          }
           const draft = readSignupDraft();
           if (draft) applyPendingSession(dispatch, draft);
           return;
@@ -44,7 +47,7 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
           }),
         );
       } catch {
-        localStorage.removeItem("accessToken");
+        // Transient runtime error; do not wipe user credentials
       }
     }
     init();

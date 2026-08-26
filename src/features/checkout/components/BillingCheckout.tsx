@@ -111,6 +111,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   const [loadingQuote, setLoadingQuote] = useState(false);
   const gstRequestId = useRef(0);
   const addressRequestId = useRef(0);
+  const quoteRequestId = useRef(0);
 
   const totals = plan
     ? computeOrderTotals(plan, resolvedSeats, cycle)
@@ -134,7 +135,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
 
   useEffect(() => {
     if (!plan?.id) return;
-    let active = true;
+    const reqId = ++quoteRequestId.current;
     setLoadingQuote(true);
     const timer = window.setTimeout(() => {
       subscriptionApi
@@ -146,27 +147,32 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
           stateCode: stateCode || undefined,
         })
         .then((data) => {
-          if (active) setQuote(data);
+          if (reqId === quoteRequestId.current) setQuote(data);
         })
         .catch((err) => {
           console.error("Failed to fetch calculation quote:", err);
         })
         .finally(() => {
-          if (active) setLoadingQuote(false);
+          if (reqId === quoteRequestId.current) setLoadingQuote(false);
         });
     }, 150);
 
     return () => {
-      active = false;
       window.clearTimeout(timer);
     };
   }, [plan?.id, resolvedSeats, cycle, stateCode]);
 
   useEffect(() => {
+    let cancelled = false;
     fetch("/api/location/countries")
       .then((res) => res.json())
-      .then((data) => setCountries(data))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data)) setCountries(data);
+      })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -174,27 +180,30 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
       setStates([]);
       return;
     }
-    fetch(`/api/location/states?country=${country}`)
+    let cancelled = false;
+    fetch(`/api/location/states?country=${encodeURIComponent(country)}`)
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setStates(data);
-          if (stateName && !stateCode) {
-            const match = data.find(
-              (s: { code: string; name: string }) =>
-                s.name.toLowerCase() === stateName.toLowerCase()
-            );
-            if (match) setStateCode(match.code);
-          } else if (stateCode && !stateName) {
-            const match = data.find(
-              (s: { code: string; name: string }) =>
-                s.code.toLowerCase() === stateCode.toLowerCase()
-            );
-            if (match) setStateName(match.name);
-          }
+        if (cancelled || !Array.isArray(data)) return;
+        setStates(data);
+        if (stateName && !stateCode) {
+          const match = data.find(
+            (s: { code: string; name: string }) =>
+              s.name.toLowerCase() === stateName.toLowerCase()
+          );
+          if (match) setStateCode(match.code);
+        } else if (stateCode && !stateName) {
+          const match = data.find(
+            (s: { code: string; name: string }) =>
+              s.code.toLowerCase() === stateCode.toLowerCase()
+          );
+          if (match) setStateName(match.name);
         }
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [country, stateCode, stateName]);
 
   useEffect(() => {
@@ -225,20 +234,10 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
     let cancelled = false;
 
     async function hydrateOrganization() {
-      const token = localStorage.getItem("accessToken");
-      if (!token) return;
-
       try {
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), 8000);
-        const response = await fetch(`${getApiUrl()}/auth/session`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        });
-        window.clearTimeout(timer);
-        const data = (await response.json()) as { organizationId?: string };
+        const data = await apiClient<{ organizationId?: string }>("/auth/session");
         if (cancelled) return;
-        if (data.organizationId) {
+        if (data?.organizationId) {
           dispatch(setMockSession({ organizationId: data.organizationId }));
         }
       } catch {
@@ -624,6 +623,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 isNewSignup: Boolean(signupDraft),
                 userEmail: signupDraft?.email ?? details?.userEmail ?? userEmail,
                 userName: signupDraft?.fullName ?? details?.userName ?? userName,
+                companyName: details?.companyName ?? billingProfile.registeredLegalName ?? signupDraft?.company ?? null,
                 activePlan: details?.activePlan ?? plan.slug,
                 subscriptionStatus:
                   details?.subscriptionStatus ?? (purchaseMode === "trial" ? "trialing" : "active"),
