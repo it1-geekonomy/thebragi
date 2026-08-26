@@ -6,13 +6,13 @@ import { Input } from "@/shared/components/ui/Input";
 import { Button } from "@/shared/components/ui/Button";
 import { Badge } from "@/shared/components/ui/Badge";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { setMockSession } from "@/store";
+import { setMockSession, clearSession } from "@/store";
 import { subscriptionApi } from "@/features/subscription/api";
 import { paymentApi } from "@/features/subscription/services/paymentApi";
 import { apiClient } from "@/shared/lib/api-client";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/config/routes";
-import { readSignupDraft } from "@/features/checkout/lib/billing-session";
+import { clearSignupDraft, readSignupDraft } from "@/features/checkout/lib/billing-session";
 import { workspaceApi, type WorkspaceInfo } from "@/features/auth/services/workspaceApi";
 
 type ProfileView = {
