@@ -117,7 +117,7 @@ export function triggerGoogleSignIn(): Promise<string> {
         type: "standard",
         theme: "outline",
         size: "large",
-        click_listener: () => {},
+        click_listener: () => { },
       });
 
       // Find the inner button and click it to open Google's consent popup
