@@ -12,6 +12,12 @@ export const paymentApi = {
       status: string;
     }>(`/razorpay/pending-signup?email=${encodeURIComponent(email)}`),
 
+  deletePendingSignup: (data: { email: string; password?: string; providerUserId?: string }) =>
+    apiClient<{ success: boolean; message: string }>("/razorpay/pending-signup/delete", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   captureSignup: async (data: {
     name: string;
     superAdminEmail: string;

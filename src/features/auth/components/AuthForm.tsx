@@ -98,7 +98,7 @@ function PasswordMode({ returnTo }: { returnTo: string; plans: DynamicPlan[] }) 
         try {
           const data = await apiClient<AuthResponse>("/auth/login", {
             method: "POST",
-            body: JSON.stringify({ email: values.email, password: values.password }),
+            body: JSON.stringify({ email: values.email, password: values.password, appType: "website" }),
           });
 
           if (data.code === "PAYMENT_PENDING") {

@@ -19,8 +19,6 @@ export type OAuthIdentityDraft = {
 const OAUTH_DRAFT_KEY = "bragi_oauth_identity_draft";
 const OAUTH_REDIRECT_KEY = "bragi_oauth_redirect_pending";
 
-
-
 export function saveOAuthIdentityDraft(draft: OAuthIdentityDraft) {
   if (typeof window !== "undefined") {
     sessionStorage.setItem(OAUTH_DRAFT_KEY, JSON.stringify(draft));
@@ -119,7 +117,7 @@ export function triggerGoogleSignIn(): Promise<string> {
         type: "standard",
         theme: "outline",
         size: "large",
-        click_listener: () => {},
+        click_listener: () => { },
       });
 
       // Find the inner button and click it to open Google's consent popup

@@ -72,7 +72,13 @@ export function ResetPasswordForm() {
             try {
               await apiClient("/auth/reset-password", {
                 method: "POST",
-                body: JSON.stringify({ email: values.email, token, newPassword: values.password }),
+                body: JSON.stringify({
+                  email: values.email,
+                  token,
+                  newPassword: values.password,
+                  password: values.password,
+                  appType: "website",
+                }),
               });
               toast.success("Password has been reset successfully.");
               router.push(ROUTES.signIn);
