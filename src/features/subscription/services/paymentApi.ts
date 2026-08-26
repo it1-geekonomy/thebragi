@@ -155,6 +155,7 @@ export const paymentApi = {
     users: number;
     seats?: number;
     billingCycle: "monthly" | "annual";
+    autoPay?: boolean;
     billing: {
       legalName: string;
       gstin: string;
@@ -206,6 +207,85 @@ export const paymentApi = {
     razorpay_signature: string;
   }) =>
     apiClient<{ organizationId?: string }>("/razorpay/verify-buy-now", {
+      method: "POST",
+      body: JSON.stringify({
+        ...data,
+        seats: data.seats ?? data.users,
+        users: data.users ?? data.seats,
+      }),
+    }),
+
+  createAutoPaySubscription: (data: {
+    organizationId?: string;
+    name?: string;
+    superAdminEmail?: string;
+    superAdminName?: string;
+    industry?: string;
+    adminPassword?: string;
+    phone?: string;
+    city?: string;
+    planId: string;
+    users?: number;
+    seats?: number;
+    billingCycle?: "monthly" | "annual";
+    isTrial?: boolean;
+    authProvider?: "local" | "google" | "microsoft";
+    providerUserId?: string;
+    emailVerified?: boolean;
+    billing?: {
+      legalName: string;
+      gstin: string;
+      pan: string;
+      address: string;
+      stateCode: string;
+      stateName: string;
+      postalCode: string;
+      country: string;
+    };
+  }) =>
+    apiClient<{
+      subscriptionId?: string;
+      subscription_id?: string;
+      id?: string;
+      orderId?: string;
+      order_id?: string;
+      keyId?: string;
+      amountPaise?: number;
+      amount?: number;
+      currency?: string;
+      pendingTrialId?: string;
+      planName?: string;
+    }>("/razorpay/create-auto-pay-subscription", {
+      method: "POST",
+      body: JSON.stringify({
+        ...data,
+        seats: data.seats ?? data.users,
+        users: data.users ?? data.seats,
+      }),
+    }),
+
+  verifyAutoPaySubscription: (data: {
+    organizationId?: string;
+    pendingTrialId?: string;
+    planId: string;
+    users?: number;
+    seats?: number;
+    razorpay_payment_id?: string;
+    razorpay_subscription_id?: string;
+    razorpay_signature?: string;
+    razorpay_order_id?: string;
+    billing?: {
+      legalName: string;
+      gstin: string;
+      pan: string;
+      address: string;
+      stateCode: string;
+      stateName: string;
+      postalCode: string;
+      country: string;
+    };
+  }) =>
+    apiClient<{ organizationId?: string; success?: boolean }>("/razorpay/verify-auto-pay", {
       method: "POST",
       body: JSON.stringify({
         ...data,

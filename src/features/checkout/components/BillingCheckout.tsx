@@ -109,6 +109,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
   const [isPaying, setIsPaying] = useState(false);
   const [quote, setQuote] = useState<SubscriptionQuote | null>(null);
   const [loadingQuote, setLoadingQuote] = useState(false);
+  const [enableAutoPay, setEnableAutoPay] = useState(true);
   const gstRequestId = useRef(0);
   const addressRequestId = useRef(0);
   const quoteRequestId = useRef(0);
@@ -409,10 +410,49 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         country: finalCountry,
       };
 
-      const trialOrder =
-        purchaseMode !== "trial"
-          ? null
-          : organizationId
+      const organizationPayload = {
+        ...(organizationId
+          ? { organizationId }
+          : signupDraft
+            ? {
+                name: signupDraft.company?.trim() || billing.legalName.trim(),
+                superAdminEmail: signupDraft.email,
+                superAdminName: signupDraft.fullName,
+                industry: signupDraft.industry || undefined,
+                ...(signupDraft.authProvider === "google" ||
+                signupDraft.authProvider === "microsoft"
+                  ? {
+                      authProvider: signupDraft.authProvider,
+                      providerUserId: signupDraft.providerUserId,
+                      emailVerified: signupDraft.emailVerified ?? true,
+                    }
+                  : { adminPassword: signupDraft.password }),
+                phone: signupDraft.phone,
+                city: finalCity,
+              }
+            : {}),
+        planId: plan.id,
+        users: resolvedSeats,
+        billingCycle: cycle,
+        billing,
+      };
+
+      let checkoutOrder: any = null;
+      if (enableAutoPay) {
+        checkoutOrder = await paymentApi
+          .createAutoPaySubscription({
+            ...organizationPayload,
+            isTrial: purchaseMode === "trial",
+          })
+          .catch((err) => {
+            console.warn("createAutoPaySubscription fallback:", err);
+            return null;
+          });
+      }
+
+      if (!checkoutOrder) {
+        if (purchaseMode === "trial") {
+          checkoutOrder = organizationId
             ? await paymentApi.createTrialAuth({
                 organizationId,
                 planId: plan.id,
@@ -428,73 +468,24 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                   password: signupDraft.password,
                 })
               : signupDraft
-                ? await paymentApi.createTrialAuth({
-                    name: signupDraft.company?.trim() || billing.legalName.trim(),
-                    superAdminEmail: signupDraft.email,
-                    superAdminName: signupDraft.fullName,
-                    industry: signupDraft.industry || undefined,
-                    ...(signupDraft.authProvider === "google" ||
-                    signupDraft.authProvider === "microsoft"
-                      ? {
-                          authProvider: signupDraft.authProvider,
-                          providerUserId: signupDraft.providerUserId,
-                          emailVerified: signupDraft.emailVerified ?? true,
-                        }
-                      : { adminPassword: signupDraft.password }),
-                    phone: signupDraft.phone,
-                    city: finalCity,
-                    planId: plan.id,
-                    users: resolvedSeats,
-                    billingCycle: cycle,
-                    billing,
-                  })
+                ? await paymentApi.createTrialAuth(organizationPayload)
                 : null;
+        } else {
+          checkoutOrder = await paymentApi.createBuyNowOrder({
+            ...organizationPayload,
+            autoPay: enableAutoPay,
+          });
+        }
+      }
 
-      if (purchaseMode === "trial" && !trialOrder) {
-        toast.error("Create an account to start the trial.");
+      if (!checkoutOrder) {
+        toast.error("Unable to initiate checkout order.");
         setIsPaying(false);
         return;
       }
-
-      if (purchaseMode === "buy_now" && !organizationId && !signupDraft) {
-        toast.error("Create an account or sign in to buy this plan.");
-        setIsPaying(false);
-        return;
-      }
-
-      const buyNowOrder =
-        purchaseMode !== "buy_now"
-          ? null
-          : await paymentApi.createBuyNowOrder({
-              ...(organizationId
-                ? { organizationId }
-                : signupDraft
-                  ? {
-                      name: signupDraft.company?.trim() || billing.legalName.trim(),
-                      superAdminEmail: signupDraft.email,
-                      superAdminName: signupDraft.fullName,
-                      industry: signupDraft.industry || undefined,
-                      ...(signupDraft.authProvider === "google" ||
-                      signupDraft.authProvider === "microsoft"
-                        ? {
-                            authProvider: signupDraft.authProvider,
-                            providerUserId: signupDraft.providerUserId,
-                            emailVerified: signupDraft.emailVerified ?? true,
-                          }
-                        : { adminPassword: signupDraft.password }),
-                      phone: signupDraft.phone,
-                      city: finalCity,
-                    }
-                  : {}),
-              planId: plan.id,
-              users: resolvedSeats,
-              billingCycle: cycle,
-              billing,
-            });
 
       const razorpayKey =
-        buyNowOrder?.keyId ??
-        trialOrder?.keyId ??
+        checkoutOrder?.keyId ??
         process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ??
         "";
       if (!razorpayKey.startsWith("rzp_test_") && process.env.NODE_ENV !== "production") {
@@ -503,24 +494,30 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         return;
       }
 
-      // Trial: backend amount is paise. Buy Now amount/quote are rupees; amountPaise is authoritative.
+      const subscriptionId =
+        checkoutOrder?.subscriptionId ??
+        checkoutOrder?.subscription_id ??
+        (enableAutoPay && checkoutOrder?.id?.startsWith("sub_") ? checkoutOrder.id : undefined);
+      const orderId =
+        checkoutOrder?.orderId ??
+        checkoutOrder?.order_id ??
+        (!subscriptionId ? checkoutOrder?.id : undefined);
+
       const trialPaise =
-        trialOrder?.amountPaise ??
-        (typeof trialOrder?.amount === "number" && trialOrder.amount >= 100
-          ? trialOrder.amount
+        checkoutOrder?.amountPaise ??
+        (typeof checkoutOrder?.amount === "number" && checkoutOrder.amount >= 100
+          ? checkoutOrder.amount
           : TRIAL_AUTHORIZATION_PAISE);
-      const buyNowRupees = buyNowOrder?.quote?.total ?? buyNowOrder?.amount ?? quote?.totalAmount ?? totals.total;
-      const buyNowPaise = buyNowOrder?.amountPaise ?? quote?.amountPaise ?? Math.round(buyNowRupees * 100);
+      const buyNowRupees = checkoutOrder?.quote?.total ?? checkoutOrder?.amount ?? quote?.totalAmount ?? totals.total;
+      const buyNowPaise = checkoutOrder?.amountPaise ?? quote?.amountPaise ?? Math.round(buyNowRupees * 100);
 
       await initializePayment(
         {
           key: razorpayKey,
-          currency: buyNowOrder?.currency ?? trialOrder?.currency ?? "INR",
+          currency: checkoutOrder?.currency ?? "INR",
           amount: purchaseMode === "trial" ? trialPaise : buyNowPaise,
-          order_id:
-            purchaseMode === "trial"
-              ? (trialOrder?.orderId ?? trialOrder?.id)
-              : (buyNowOrder?.orderId ?? buyNowOrder?.id),
+          subscription_id: subscriptionId,
+          order_id: orderId,
           name: brand.name,
           description:
             purchaseMode === "trial"
@@ -531,7 +528,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
         },
         async (response: RazorpaySuccessResponse) => {
           try {
-            const pendingTrialId = trialOrder?.pendingTrialId ?? buyNowOrder?.pendingTrialId;
+            const pendingTrialId = checkoutOrder?.pendingTrialId;
             const billingProfile = {
               registeredLegalName: billing.legalName,
               gstin: billing.gstin,
@@ -545,22 +542,40 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
 
             let paidOrganizationId = organizationId;
 
-            if (purchaseMode === "trial") {
-              if (!pendingTrialId) throw new Error("Missing trial checkout id.");
-              const verified = await paymentApi.verifyTrialAuth({
-                ...response,
-                pendingTrialId,
-                billing,
-              });
-              paidOrganizationId = verified.organizationId ?? paidOrganizationId;
-            } else {
-              const verified = await paymentApi.verifyBuyNowPayment({
-                ...response,
-                ...(organizationId ? { organizationId } : { pendingTrialId }),
-                planId: plan.id,
-                users: resolvedSeats,
-              });
-              paidOrganizationId = verified.organizationId ?? paidOrganizationId;
+            if (enableAutoPay) {
+              const verified = await paymentApi
+                .verifyAutoPaySubscription({
+                  ...response,
+                  organizationId: paidOrganizationId || undefined,
+                  pendingTrialId,
+                  planId: plan.id,
+                  users: resolvedSeats,
+                  billing,
+                })
+                .catch(() => null);
+              if (verified?.organizationId) {
+                paidOrganizationId = verified.organizationId;
+              }
+            }
+
+            if (!paidOrganizationId) {
+              if (purchaseMode === "trial") {
+                if (!pendingTrialId) throw new Error("Missing trial checkout id.");
+                const verified = await paymentApi.verifyTrialAuth({
+                  ...response,
+                  pendingTrialId,
+                  billing,
+                });
+                paidOrganizationId = verified.organizationId ?? paidOrganizationId;
+              } else {
+                const verified = await paymentApi.verifyBuyNowPayment({
+                  ...response,
+                  ...(organizationId ? { organizationId } : { pendingTrialId }),
+                  planId: plan.id,
+                  users: resolvedSeats,
+                });
+                paidOrganizationId = verified.organizationId ?? paidOrganizationId;
+              }
             }
 
             if (signupDraft) {
@@ -816,6 +831,31 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 inputMode="numeric"
                 maxLength={6}
               />
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-[#162118]/60 p-4">
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={enableAutoPay}
+                  onChange={(e) => setEnableAutoPay(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-black/40 text-[#7dc890] accent-[#7dc890] focus:ring-[#7dc890]"
+                />
+                <div>
+                  <span className="text-sm font-semibold text-white">
+                    {purchaseMode === "trial" ? "Enable Auto-Pay after trial" : "Enable Auto-Pay (Automatic Renewal)"}
+                  </span>
+                  <p className="mt-0.5 text-xs text-white/55">
+                    {purchaseMode === "trial"
+                      ? enableAutoPay
+                        ? `After your 14-day free trial, your plan will automatically renew on the ${cycle} cycle. You can cancel anytime before the trial ends.`
+                        : "No auto-renewal. Your trial will end after 14 days without charging unless renewed manually."
+                      : enableAutoPay
+                        ? `Your subscription will automatically renew at the end of each ${cycle === "annual" ? "year" : "month"}. You can cancel anytime from your billing page.`
+                        : "One-time payment for this billing cycle. Auto-renewal will be inactive."}
+                  </p>
+                </div>
+              </label>
             </div>
 
             <Button className="w-full" disabled={isPaying} type="submit">
