@@ -34,68 +34,103 @@ function getPricingModel(apiPlan: ApiPlan, monthlyPerUserCost: number, annualPer
     : "per_seat";
 }
 
+function mapApiPlans(data: ApiPlan[]): DynamicPlan[] {
+  const mappedPlans = data.map((apiPlan) => {
+    const monthlyPriceObj = apiPlan.prices?.find((p) => p.billingCycle?.toLowerCase() === "monthly");
+    const annualPriceObj = apiPlan.prices?.find((p) => p.billingCycle?.toLowerCase() === "annual");
+    const monthlyPerUserCost = Number(monthlyPriceObj?.perUserCost || 0);
+    const annualPerUserCost = Number(annualPriceObj?.perUserCost || 0);
+    const pricingModel = getPricingModel(apiPlan, monthlyPerUserCost, annualPerUserCost);
+    const includedUsers = Number(apiPlan.includedUsers ?? apiPlan.maxUsers ?? 0);
+    const minimumSeats = Number(
+      apiPlan.minimumSeats || (pricingModel === "included_overage" && includedUsers > 0 ? includedUsers : 3),
+    );
+    const discountPct = Number(apiPlan.annualDiscountPercentage || 0);
+    const userLimitLabel =
+      pricingModel === "included_overage" && includedUsers > 0 ? includedUsers : "unlimited";
+
+    return {
+      id: apiPlan.id,
+      slug: apiPlan.id,
+      name: apiPlan.name,
+      description: `Includes up to ${userLimitLabel} users`,
+      priceMonthly: Number(monthlyPriceObj?.price || 0),
+      priceAnnual: Number(annualPriceObj?.price || 0),
+      perUserCostMonthly: monthlyPerUserCost,
+      perUserCostAnnual: annualPerUserCost,
+      annualDiscountPercentage: discountPct,
+      includedUsers,
+      minimumSeats,
+      maxUsers: includedUsers,
+      maximumSeats: Math.max(minimumSeats, includedUsers > 0 ? includedUsers * 10 : 100),
+      pricingModel,
+      setupFee: Number(apiPlan.setupCost || 0),
+    };
+  });
+
+  const enterprisePlan: DynamicPlan = {
+    id: "enterprise-plan-static",
+    slug: "enterprise",
+    name: "Enterprise",
+    description: "Custom built for large scale organizations",
+    priceMonthly: 0,
+    priceAnnual: 0,
+    perUserCostMonthly: 0,
+    perUserCostAnnual: 0,
+    annualDiscountPercentage: 0,
+    includedUsers: 0,
+    minimumSeats: 25,
+    maxUsers: 0,
+    maximumSeats: 0,
+    pricingModel: "per_seat",
+    setupFee: 0,
+    isEnterprise: true,
+  };
+
+  return [...mappedPlans, enterprisePlan];
+}
+
+// In-memory cache & request deduplication to prevent repetitive network calls across views
+let cachedPlans: DynamicPlan[] | null = null;
+let activePlansPromise: Promise<DynamicPlan[]> | null = null;
+
+async function fetchAndCachePlans(): Promise<DynamicPlan[]> {
+  if (cachedPlans) return cachedPlans;
+  if (!activePlansPromise) {
+    activePlansPromise = subscriptionApi
+      .getPlans()
+      .then((data) => {
+        const result = mapApiPlans(data);
+        cachedPlans = result;
+        activePlansPromise = null;
+        return result;
+      })
+      .catch((err) => {
+        activePlansPromise = null;
+        throw err;
+      });
+  }
+  return activePlansPromise;
+}
+
 export function useSubscriptionPlans() {
-  const [plans, setPlans] = useState<DynamicPlan[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [plans, setPlans] = useState<DynamicPlan[]>(() => cachedPlans ?? []);
+  const [loading, setLoading] = useState<boolean>(() => !cachedPlans);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (cachedPlans) {
+      setPlans(cachedPlans);
+      setLoading(false);
+      return;
+    }
+
     let active = true;
-    subscriptionApi
-      .getPlans()
+    fetchAndCachePlans()
       .then((data) => {
         if (active) {
-          const mappedPlans = data.map((apiPlan) => {
-            const monthlyPriceObj = apiPlan.prices?.find((p) => p.billingCycle?.toLowerCase() === "monthly");
-            const annualPriceObj = apiPlan.prices?.find((p) => p.billingCycle?.toLowerCase() === "annual");
-            const monthlyPerUserCost = Number(monthlyPriceObj?.perUserCost || 0);
-            const annualPerUserCost = Number(annualPriceObj?.perUserCost || 0);
-            const pricingModel = getPricingModel(apiPlan, monthlyPerUserCost, annualPerUserCost);
-            const includedUsers = Number(apiPlan.includedUsers ?? apiPlan.maxUsers ?? 0);
-            const minimumSeats = Number(
-              apiPlan.minimumSeats || (pricingModel === "included_overage" && includedUsers > 0 ? includedUsers : 3),
-            );
-            const discountPct = Number(apiPlan.annualDiscountPercentage || 0);
-            const userLimitLabel =
-              pricingModel === "included_overage" && includedUsers > 0 ? includedUsers : "unlimited";
-
-            return {
-              id: apiPlan.id,
-              slug: apiPlan.id,
-              name: apiPlan.name,
-              description: `Includes up to ${userLimitLabel} users`,
-              priceMonthly: Number(monthlyPriceObj?.price || 0),
-              priceAnnual: Number(annualPriceObj?.price || 0),
-              perUserCostMonthly: monthlyPerUserCost,
-              perUserCostAnnual: annualPerUserCost,
-              annualDiscountPercentage: discountPct,
-              includedUsers,
-              minimumSeats,
-              maxUsers: includedUsers,
-              maximumSeats: Math.max(minimumSeats, includedUsers > 0 ? includedUsers * 10 : 100),
-              pricingModel,
-              setupFee: Number(apiPlan.setupCost || 0),
-            };
-          });
-          const enterprisePlan: DynamicPlan = {
-            id: "enterprise-plan-static",
-            slug: "enterprise",
-            name: "Enterprise",
-            description: "Custom built for large scale organizations",
-            priceMonthly: 0,
-            priceAnnual: 0,
-            perUserCostMonthly: 0,
-            perUserCostAnnual: 0,
-            annualDiscountPercentage: 0,
-            includedUsers: 0,
-            minimumSeats: 25,
-            maxUsers: 0,
-            maximumSeats: 0,
-            pricingModel: "per_seat",
-            setupFee: 0,
-            isEnterprise: true,
-          };
-          setPlans([...mappedPlans, enterprisePlan]);
+          setPlans(data);
+          setError(null);
         }
       })
       .catch((err: { message?: string }) => {
@@ -104,6 +139,7 @@ export function useSubscriptionPlans() {
       .finally(() => {
         if (active) setLoading(false);
       });
+
     return () => {
       active = false;
     };
