@@ -318,7 +318,11 @@ function AuthFormContent() {
   const showPlan = Boolean(plan);
   const [oauthBusy, setOauthBusy] = useState(false);
 
-  const handleOAuthSuccess = async (data: AuthResponse, provider: "google" | "microsoft") => {
+  const handleOAuthSuccess = async (
+    data: AuthResponse,
+    provider: "google" | "microsoft",
+    idToken: string,
+  ) => {
     try {
       setOauthBusy(true);
 
@@ -335,6 +339,7 @@ function AuthFormContent() {
           authProvider: provider,
           providerUserId: data.providerUserId,
           emailVerified: true,
+          idToken,
           pendingTrialId: data.pendingTrialId,
         });
         toast.success("Account recognized. Choose a plan to activate your workspace.");
@@ -351,6 +356,7 @@ function AuthFormContent() {
           email,
           name,
           emailVerified: true,
+          idToken,
         };
         saveOAuthIdentityDraft(oauth);
 

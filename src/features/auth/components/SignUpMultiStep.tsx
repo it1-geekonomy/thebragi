@@ -289,7 +289,11 @@ export function SignUpMultiStep({
     );
   }
 
-  const handleOAuthSuccess = async (data: AuthResponse, provider: "google" | "microsoft") => {
+  const handleOAuthSuccess = async (
+    data: AuthResponse,
+    provider: "google" | "microsoft",
+    idToken: string,
+  ) => {
     try {
       setIsProcessing(true);
 
@@ -306,6 +310,7 @@ export function SignUpMultiStep({
           authProvider: provider,
           providerUserId: data.providerUserId,
           emailVerified: true,
+          idToken,
           pendingTrialId: data.pendingTrialId,
         });
         toast.success("Account recognized. Choose a plan to activate your workspace.");
@@ -322,6 +327,7 @@ export function SignUpMultiStep({
           email,
           name,
           emailVerified: true,
+          idToken,
         };
         saveOAuthIdentityDraft(oauth);
 

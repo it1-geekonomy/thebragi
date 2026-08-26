@@ -210,6 +210,17 @@ export const paymentApi = {
     razorpay_order_id: string;
     razorpay_payment_id: string;
     razorpay_signature: string;
+    billing?: {
+      legalName: string;
+      gstin: string;
+      pan: string;
+      address: string;
+      stateCode: string;
+      stateName: string;
+      postalCode: string;
+      country: string;
+      city?: string;
+    };
   }) =>
     apiClient<{ organizationId?: string }>("/razorpay/verify-buy-now", {
       method: "POST",

@@ -560,6 +560,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                 ...(organizationId ? { organizationId } : { pendingTrialId }),
                 planId: plan.id,
                 users: resolvedSeats,
+                billing,
               });
               paidOrganizationId = verified.organizationId ?? paidOrganizationId;
             }
@@ -576,6 +577,23 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
                     body: JSON.stringify({
                       authProvider: signupDraft.authProvider,
                       idToken: signupDraft.idToken,
+                    }),
+                  });
+                  localStorage.setItem(
+                    "accessToken",
+                    (loginData.accessToken ?? "").replace(/^Bearer\s+/i, ""),
+                  );
+                } else if (
+                  signupDraft.authProvider === "google" ||
+                  signupDraft.authProvider === "microsoft"
+                ) {
+                  // After payment, CRM user password is the tenant default.
+                  const loginData = await apiClient<{ accessToken: string }>("/auth/login", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      email: signupDraft.email,
+                      password: "password123",
+                      appType: "website",
                     }),
                   });
                   localStorage.setItem(
@@ -611,7 +629,7 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
               try {
                 await paymentApi.updateOrganizationProfile(paidOrganizationId, billingProfile);
               } catch {
-                // payment already succeeded — don't fail checkout if profile save is rejected
+                // payment already succeeded — billing should already be on verify; don't fail checkout
               }
             }
 
@@ -733,12 +751,13 @@ export function BillingCheckout({ initial }: { initial: CheckoutParams }) {
               <div>
                 <Input
                   id="gstin"
-                  label="GSTIN"
+                  label="GSTIN *"
                   value={gstin}
                   onChange={(event) => setGstin(event.target.value.toUpperCase())}
                   placeholder="Enter 15-character GSTIN"
                   autoComplete="off"
                   maxLength={15}
+                  required
                 />
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                   {!SKIP_GST_VALIDATION && gstChecking ? (

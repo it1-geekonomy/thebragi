@@ -13,7 +13,11 @@ import { type AuthResponse } from "@/features/auth/lib/auth-session";
 import { getApiErrorMessage } from "@/shared/lib/api-client";
 
 type OAuthButtonsProps = {
-  onOAuthSuccess: (data: AuthResponse, provider: "google" | "microsoft") => void | Promise<void>;
+  onOAuthSuccess: (
+    data: AuthResponse,
+    provider: "google" | "microsoft",
+    idToken: string,
+  ) => void | Promise<void>;
   disabled?: boolean;
 };
 
@@ -30,7 +34,7 @@ export function OAuthButtons({ onOAuthSuccess, disabled = false }: OAuthButtonsP
     try {
       const idToken = await triggerGoogleSignIn();
       const authData = await oauthLogin("google", idToken);
-      await onOAuthSuccess(authData, "google");
+      await onOAuthSuccess(authData, "google", idToken);
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Google sign-in failed."));
     } finally {
@@ -48,7 +52,7 @@ export function OAuthButtons({ onOAuthSuccess, disabled = false }: OAuthButtonsP
     try {
       const idToken = await triggerMicrosoftSignIn();
       const authData = await oauthLogin("microsoft", idToken);
-      await onOAuthSuccess(authData, "microsoft");
+      await onOAuthSuccess(authData, "microsoft", idToken);
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Microsoft sign-in failed."));
     } finally {
