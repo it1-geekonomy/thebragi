@@ -189,7 +189,11 @@ function SignInPanel({
   returnTo: string;
   modeHref: (mode: AuthMode) => string;
   plans: DynamicPlan[];
-  onOAuthSuccess: (data: AuthResponse, provider: "google" | "microsoft") => void | Promise<void>;
+  onOAuthSuccess: (
+    data: AuthResponse,
+    provider: "google" | "microsoft",
+    idToken: string,
+  ) => void | Promise<void>;
 }) {
   return (
     <section className="rounded-lg border border-white/10 bg-[#0b100c] p-6 sm:p-8">
